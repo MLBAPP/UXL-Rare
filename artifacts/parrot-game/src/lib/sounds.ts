@@ -87,8 +87,9 @@ export function playHit() {
   playTone(80, "sawtooth", 0.3, 0.5, 0, 40);
 }
 
-export function playDodge() {
-  playTone(1200, "sine", 0.06, 0.12, 0, 800);
+export function playCollect() {
+  playTone(880, "sine", 0.05, 0.2);
+  playTone(1320, "sine", 0.1, 0.18, 0.04);
 }
 
 export function playGameStart() {

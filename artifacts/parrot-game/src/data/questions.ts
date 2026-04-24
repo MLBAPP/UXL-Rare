@@ -56,5 +56,15 @@ export const QUESTIONS: Question[] = [
   },
 ];
 
-export const BONUS_SECONDS_PER_CORRECT = 2;
-export const BASE_SURVIVAL_TIME = 15;
+export const BONUS_POINTS_PER_CORRECT = 25;
+
+export const FRUIT_POINTS: { emoji: string; points: number }[] = [
+  { emoji: "🍒", points: 5 },
+  { emoji: "🍎", points: 10 },
+  { emoji: "🍌", points: 15 },
+  { emoji: "🍓", points: 20 },
+  { emoji: "🍇", points: 25 },
+  { emoji: "🥝", points: 30 },
+  { emoji: "🥭", points: 40 },
+  { emoji: "🍉", points: 50 },
+];

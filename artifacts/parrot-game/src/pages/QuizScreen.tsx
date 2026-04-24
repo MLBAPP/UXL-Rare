@@ -1,10 +1,10 @@
 import { useState } from "react";
 import StarField from "../components/StarField";
-import { QUESTIONS, BONUS_SECONDS_PER_CORRECT } from "../data/questions";
+import { QUESTIONS, BONUS_POINTS_PER_CORRECT } from "../data/questions";
 import { playCorrect, playWrong } from "../lib/sounds";
 
 interface QuizScreenProps {
-  onComplete: (bonusSeconds: number) => void;
+  onComplete: (bonusPoints: number) => void;
 }
 
 export default function QuizScreen({ onComplete }: QuizScreenProps) {
@@ -29,7 +29,7 @@ export default function QuizScreen({ onComplete }: QuizScreenProps) {
 
     if (isCorrect) {
       playCorrect();
-      newBonus = bonusTotal + BONUS_SECONDS_PER_CORRECT;
+      newBonus = bonusTotal + BONUS_POINTS_PER_CORRECT;
       newCorrect = correctCount + 1;
       setCorrectCount(newCorrect);
       setBonusTotal(newBonus);
@@ -57,23 +57,20 @@ export default function QuizScreen({ onComplete }: QuizScreenProps) {
       <div
         className={`relative z-10 flex flex-col h-full max-w-md mx-auto w-full ${shake ? "shake-anim" : ""}`}
       >
-        {/* Header */}
         <div className="flex items-center justify-between mb-4 pt-2">
           <div className="text-yellow-300 font-black text-lg">
             {currentIndex + 1} / {QUESTIONS.length}
           </div>
           <div className="flex items-center gap-1.5 bg-white/10 rounded-full px-3 py-1">
-            <span className="text-lg">⏱️</span>
-            <span className="text-yellow-200 font-bold text-sm">+{bonusTotal}s earned</span>
+            <span className="text-lg">⭐</span>
+            <span className="text-yellow-200 font-bold text-sm">+{bonusTotal} pts earned</span>
           </div>
         </div>
 
-        {/* Progress bar */}
         <div className="progress-bar mb-6">
           <div className="progress-fill" style={{ width: `${progress}%` }} />
         </div>
 
-        {/* Question card */}
         <div className="bg-white/5 border border-white/10 rounded-2xl p-6 mb-5 pop-anim" key={currentIndex}>
           <div className="text-4xl text-center mb-4">{question.emoji}</div>
           <p className="text-white font-bold text-xl text-center leading-snug">
@@ -81,7 +78,6 @@ export default function QuizScreen({ onComplete }: QuizScreenProps) {
           </p>
         </div>
 
-        {/* Answers */}
         <div className="space-y-3 flex-1">
           {question.options.map((opt, idx) => {
             let cls = "answer-btn";
@@ -105,7 +101,6 @@ export default function QuizScreen({ onComplete }: QuizScreenProps) {
           })}
         </div>
 
-        {/* Feedback toast */}
         {showFeedback && selected !== null && (
           <div
             className={`mt-4 text-center py-3 rounded-xl font-black text-lg pop-anim ${
@@ -115,7 +110,7 @@ export default function QuizScreen({ onComplete }: QuizScreenProps) {
             }`}
           >
             {selected === question.correctIndex
-              ? `✅ Correct! +${BONUS_SECONDS_PER_CORRECT}s`
+              ? `✅ Correct! +${BONUS_POINTS_PER_CORRECT} pts`
               : `❌ Nope! It was "${question.options[question.correctIndex]}"`}
           </div>
         )}

@@ -3,31 +3,33 @@ import StartScreen from "./pages/StartScreen";
 import QuizScreen from "./pages/QuizScreen";
 import GameScreen from "./pages/GameScreen";
 import ResultScreen from "./pages/ResultScreen";
+import { saveToLeaderboard } from "./lib/leaderboard";
 
 type Phase = "start" | "quiz" | "game" | "result";
 
 export default function App() {
   const [phase, setPhase] = useState<Phase>("start");
-  const [bonusSeconds, setBonusSeconds] = useState(0);
-  const [survivalTime, setSurvivalTime] = useState(0);
+  const [bonusPoints, setBonusPoints] = useState(0);
+  const [gameResult, setGameResult] = useState<{ score: number; timeAlive: number }>({ score: 0, timeAlive: 0 });
 
   function handleStart() {
     setPhase("quiz");
   }
 
   function handleQuizComplete(bonus: number) {
-    setBonusSeconds(bonus);
+    setBonusPoints(bonus);
     setPhase("game");
   }
 
-  function handleGameOver(time: number) {
-    setSurvivalTime(time);
+  function handleGameOver(score: number, timeAlive: number) {
+    saveToLeaderboard(score, timeAlive);
+    setGameResult({ score, timeAlive });
     setPhase("result");
   }
 
   function handlePlayAgain() {
-    setBonusSeconds(0);
-    setSurvivalTime(0);
+    setBonusPoints(0);
+    setGameResult({ score: 0, timeAlive: 0 });
     setPhase("start");
   }
 
@@ -37,15 +39,15 @@ export default function App() {
       {phase === "quiz" && <QuizScreen onComplete={handleQuizComplete} />}
       {phase === "game" && (
         <GameScreen
-          key={bonusSeconds}
-          bonusSeconds={bonusSeconds}
+          key={bonusPoints}
+          bonusPoints={bonusPoints}
           onGameOver={handleGameOver}
         />
       )}
       {phase === "result" && (
         <ResultScreen
-          survivalTime={survivalTime}
-          bonusSeconds={bonusSeconds}
+          score={gameResult.score}
+          timeAlive={gameResult.timeAlive}
           onPlayAgain={handlePlayAgain}
         />
       )}

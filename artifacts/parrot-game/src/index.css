@@ -104,6 +104,12 @@
   to { transform: translateY(110vh) rotate(360deg); }
 }
 
+@keyframes floatUp {
+  0%   { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+  60%  { opacity: 1; transform: translate(-50%, -120%) scale(1.2); }
+  100% { opacity: 0; transform: translate(-50%, -200%) scale(0.9); }
+}
+
 .float-anim { animation: float 2s ease-in-out infinite; }
 .wiggle-anim { animation: wiggle 0.5s ease-in-out infinite; }
 .pop-anim { animation: pop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }

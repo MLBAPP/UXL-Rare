@@ -1,6 +1,6 @@
 import StarField from "../components/StarField";
 import ParrotEmoji from "../components/ParrotEmoji";
-import { BASE_SURVIVAL_TIME, BONUS_SECONDS_PER_CORRECT, QUESTIONS } from "../data/questions";
+import { BONUS_POINTS_PER_CORRECT, QUESTIONS } from "../data/questions";
 import { initAudio } from "../lib/sounds";
 
 interface StartScreenProps {
@@ -30,21 +30,21 @@ export default function StartScreen({ onStart }: StartScreenProps) {
             <span className="text-2xl">🧠</span>
             <div>
               <p className="text-yellow-200 font-bold text-sm">Phase 1: Quiz</p>
-              <p className="text-gray-300 text-sm">Answer {QUESTIONS.length} questions. Each correct answer earns +{BONUS_SECONDS_PER_CORRECT}s of survival time!</p>
+              <p className="text-gray-300 text-sm">Answer {QUESTIONS.length} questions. Each correct answer earns +{BONUS_POINTS_PER_CORRECT} bonus points!</p>
             </div>
           </div>
           <div className="flex items-start gap-3">
             <span className="text-2xl">🦜</span>
             <div>
-              <p className="text-yellow-200 font-bold text-sm">Phase 2: Survive!</p>
-              <p className="text-gray-300 text-sm">Dodge falling objects until your time runs out. Start with {BASE_SURVIVAL_TIME}s base time.</p>
+              <p className="text-yellow-200 font-bold text-sm">Phase 2: Endurance!</p>
+              <p className="text-gray-300 text-sm">Catch 🍎 fruits for points. Dodge 💣 bombs — one hit and it's over! Survive as long as you can.</p>
             </div>
           </div>
           <div className="flex items-start gap-3">
-            <span className="text-2xl">🏆</span>
+            <span className="text-2xl">🏅</span>
             <div>
-              <p className="text-yellow-200 font-bold text-sm">Get Ranked</p>
-              <p className="text-gray-300 text-sm">Earn a legendary rank based on how long you survived!</p>
+              <p className="text-yellow-200 font-bold text-sm">Leaderboard</p>
+              <p className="text-gray-300 text-sm">Your best runs are saved. Climb the ranks!</p>
             </div>
           </div>
         </div>
