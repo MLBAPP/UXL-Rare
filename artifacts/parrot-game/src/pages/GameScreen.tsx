@@ -32,11 +32,10 @@ const SPEED_SCALE = 0.6;
 let uid = 0;
 
 interface Props {
-  bonusPoints: number;
   onGameOver: (score: number, timeAlive: number) => void;
 }
 
-export default function GameScreen({ bonusPoints, onGameOver }: Props) {
+export default function GameScreen({ onGameOver }: Props) {
   const [parrotPx,      setParrotPx]     = useState(0);
   const [objects,       setObjects]      = useState<FallingObject[]>([]);
   const [floatingTexts, setFloatingTexts] = useState<FloatingText[]>([]);
@@ -46,7 +45,7 @@ export default function GameScreen({ bonusPoints, onGameOver }: Props) {
   const [shake,         setShake]        = useState(false);
   const [flash,         setFlash]        = useState(false);
   const [facing,        setFacing]       = useState<"l" | "r">("r");
-  const [score,         setScore]        = useState(bonusPoints);
+  const [score,         setScore]        = useState(0);
   const [timeAlive,     setTimeAlive]    = useState(0);
 
   const wrapRef      = useRef<HTMLDivElement>(null);
@@ -59,7 +58,7 @@ export default function GameScreen({ bonusPoints, onGameOver }: Props) {
   const startTsRef   = useRef(0);
   const keysRef      = useRef({ l: false, r: false });
   const swipeXRef    = useRef<number | null>(null);
-  const scoreRef     = useRef(bonusPoints);
+  const scoreRef     = useRef(0);
 
   const canvasW = useRef(0);
   const canvasH = useRef(0);
