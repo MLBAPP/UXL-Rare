@@ -4,101 +4,81 @@ import { playCountdownBeep, playHit, playGameStart } from "../lib/sounds";
 
 interface FallingObject {
   id: number;
-  x: number;
-  y: number;
-  speed: number;
+  x: number;   // px from left of canvas
+  y: number;   // px from top of canvas
+  speed: number; // px per second
   size: number;
   emoji: string;
-  rotation: number;
+  rot: number;
   rotSpeed: number;
 }
 
-const OBSTACLE_EMOJIS = [
-  "💣", "🪨", "⚡", "🌶️", "🔥", "💥", "🌪️", "☄️", "🎯", "🧨",
-  "🔴", "💢", "👹", "🦠",
-];
+const EMOJIS = ["💣","🪨","⚡","🌶️","🔥","💥","🌪️","☄️","🎯","🧨","💢","👹"];
+const CTRL_H = 96;   // height of control bar in px
+const HDR_H  = 60;   // height of header/timer in px
+const PARROT_W = 56; // parrot emoji font-size
+const MAX_OBJ = 9;
+const GRACE   = 3;   // seconds of easy start
+const MOVE_SPEED = 280; // px/s
 
-const MAX_OBJECTS = 10;
-const GRACE_PERIOD = 3;
-const HIT_RADIUS = 24;
+let uid = 0;
 
-let nextId = 0;
-
-interface GameScreenProps {
+interface Props {
   bonusSeconds: number;
-  onGameOver: (survivalTime: number) => void;
+  onGameOver: (t: number) => void;
 }
 
-export default function GameScreen({ bonusSeconds, onGameOver }: GameScreenProps) {
+export default function GameScreen({ bonusSeconds, onGameOver }: Props) {
   const totalTime = BASE_SURVIVAL_TIME + bonusSeconds;
-  const [timeLeft, setTimeLeft] = useState(totalTime);
-  const [parrotX, setParrotX] = useState(50);
-  const [objects, setObjects] = useState<FallingObject[]>([]);
-  const [hit, setHit] = useState(false);
-  const [started, setStarted] = useState(false);
-  const [countdown, setCountdown] = useState(3);
-  const [screenShake, setScreenShake] = useState(false);
-  const [flashColor, setFlashColor] = useState<string | null>(null);
-  const [parrotAnim, setParrotAnim] = useState<"idle" | "left" | "right">("idle");
 
-  const parrotXRef = useRef(50);
-  const gameAreaRef = useRef<HTMLDivElement>(null);
-  const objectsRef = useRef<FallingObject[]>([]);
-  const hitRef = useRef(false);
-  const aliveRef = useRef(true);
-  const rafRef = useRef<number>(0);
-  const lastSpawnRef = useRef<number>(0);
-  const touchStartX = useRef<number | null>(null);
-  const isDragging = useRef(false);
-  const keysRef = useRef<{ left: boolean; right: boolean }>({ left: false, right: false });
-  const timeLeftRef = useRef(totalTime);
-  const survivalStartRef = useRef<number>(0);
-  const lastDirRef = useRef<"idle" | "left" | "right">("idle");
-  const animTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // ── state driving renders ──────────────────────────────────────────────────
+  const [timeLeft,   setTimeLeft]   = useState(totalTime);
+  const [parrotPx,   setParrotPx]   = useState(0);   // will be set after mount
+  const [objects,    setObjects]    = useState<FallingObject[]>([]);
+  const [hit,        setHit]        = useState(false);
+  const [started,    setStarted]    = useState(false);
+  const [countdown,  setCountdown]  = useState(3);
+  const [shake,      setShake]      = useState(false);
+  const [flash,      setFlash]      = useState(false);
+  const [facing,     setFacing]     = useState<"l"|"r">("r");
 
-  const triggerShake = useCallback(() => {
-    setScreenShake(true);
-    setTimeout(() => setScreenShake(false), 350);
-  }, []);
+  // ── refs (no re-render needed) ─────────────────────────────────────────────
+  const wrapRef      = useRef<HTMLDivElement>(null);
+  const canvasRef    = useRef<HTMLDivElement>(null);
+  const parrotPxRef  = useRef(0);
+  const objRef       = useRef<FallingObject[]>([]);
+  const deadRef      = useRef(false);
+  const rafRef       = useRef(0);
+  const lastSpawnRef = useRef(0);
+  const startTsRef   = useRef(0);
+  const timeRef      = useRef(totalTime);
+  const keysRef      = useRef({ l: false, r: false });
+  const swipeXRef    = useRef<number|null>(null);
 
-  const triggerFlash = useCallback((color: string) => {
-    setFlashColor(color);
-    setTimeout(() => setFlashColor(null), 180);
-  }, []);
+  // ── canvas dimensions (computed once, stable during gameplay) ─────────────
+  const canvasW = useRef(0);
+  const canvasH = useRef(0);
 
-  const setParrotDir = useCallback((dir: "left" | "right" | "idle") => {
-    if (dir === lastDirRef.current) return;
-    lastDirRef.current = dir;
-    setParrotAnim(dir);
-    if (animTimeoutRef.current) clearTimeout(animTimeoutRef.current);
-    if (dir !== "idle") {
-      animTimeoutRef.current = setTimeout(() => {
-        lastDirRef.current = "idle";
-        setParrotAnim("idle");
-      }, 150);
+  const measureCanvas = useCallback(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    canvasW.current = el.clientWidth;
+    canvasH.current = el.clientHeight;
+    // centre parrot if first time
+    if (parrotPxRef.current === 0) {
+      const cx = el.clientWidth / 2;
+      parrotPxRef.current = cx;
+      setParrotPx(cx);
     }
   }, []);
 
-  const spawnObject = useCallback((playerX: number) => {
-    let x: number;
-    let attempts = 0;
-    do {
-      x = Math.random() * 84 + 8;
-      attempts++;
-    } while (Math.abs(x - playerX) < 18 && attempts < 8);
+  useEffect(() => {
+    measureCanvas();
+    window.addEventListener("resize", measureCanvas);
+    return () => window.removeEventListener("resize", measureCanvas);
+  }, [measureCanvas]);
 
-    return {
-      id: nextId++,
-      x,
-      y: -8,
-      speed: Math.random() * 6 + 5,
-      size: Math.random() * 14 + 28,
-      emoji: OBSTACLE_EMOJIS[Math.floor(Math.random() * OBSTACLE_EMOJIS.length)],
-      rotation: 0,
-      rotSpeed: (Math.random() - 0.5) * 4,
-    } satisfies FallingObject;
-  }, []);
-
+  // ── countdown ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (countdown <= 0) return;
     const t = setTimeout(() => {
@@ -106,399 +86,369 @@ export default function GameScreen({ bonusSeconds, onGameOver }: GameScreenProps
       if (countdown === 1) {
         setStarted(true);
         setCountdown(0);
-        survivalStartRef.current = performance.now();
+        startTsRef.current = performance.now();
         playGameStart();
       } else {
-        setCountdown((c) => c - 1);
+        setCountdown(c => c - 1);
       }
     }, 1000);
     return () => clearTimeout(t);
   }, [countdown]);
 
+  // ── timer ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!started) return;
-    const timerInterval = setInterval(() => {
-      timeLeftRef.current -= 0.1;
-      const clamped = Math.max(0, timeLeftRef.current);
-      setTimeLeft(clamped);
-      if (clamped <= 0 && aliveRef.current) {
-        aliveRef.current = false;
+    const iv = setInterval(() => {
+      timeRef.current = Math.max(0, timeRef.current - 0.1);
+      setTimeLeft(timeRef.current);
+      if (timeRef.current <= 0 && !deadRef.current) {
+        deadRef.current = true;
         onGameOver(totalTime);
       }
     }, 100);
-    return () => clearInterval(timerInterval);
+    return () => clearInterval(iv);
   }, [started, onGameOver, totalTime]);
 
+  // ── spawn helper ───────────────────────────────────────────────────────────
+  const spawn = useCallback(() => {
+    const w = canvasW.current || 400;
+    const px = parrotPxRef.current;
+    let x: number;
+    let tries = 0;
+    do {
+      x = Math.random() * (w - 60) + 30;
+      tries++;
+    } while (Math.abs(x - px) < 60 && tries < 10);
+
+    objRef.current.push({
+      id: uid++,
+      x,
+      y: -40,
+      speed: Math.random() * 60 + 50,   // px/s, will be multiplied by speedFactor
+      size: Math.random() * 14 + 28,
+      emoji: EMOJIS[Math.floor(Math.random() * EMOJIS.length)],
+      rot: 0,
+      rotSpeed: (Math.random() - 0.5) * 180,
+    });
+  }, []);
+
+  // ── main game loop ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!started) return;
-
-    let lastTime = performance.now();
+    let prev = performance.now();
 
     const loop = (now: number) => {
-      if (!aliveRef.current) return;
+      if (deadRef.current) return;
+      const dt   = Math.min((now - prev) / 1000, 0.05);
+      prev = now;
+      const elapsed = (now - startTsRef.current) / 1000;
 
-      const delta = Math.min((now - lastTime) / 1000, 0.05);
-      lastTime = now;
-      const elapsed = (now - survivalStartRef.current) / 1000;
-
-      // Smooth speed ramp: very slow first 3s, then gradually increases
+      // speed ramp: 0→GRACE very slow, then linearly increasing
       const speedFactor =
-        elapsed < GRACE_PERIOD
-          ? 0.25 + (elapsed / GRACE_PERIOD) * 0.35
-          : 0.6 + ((elapsed - GRACE_PERIOD) / 25);
+        elapsed < GRACE
+          ? 0.25 + (elapsed / GRACE) * 0.3
+          : 0.55 + (elapsed - GRACE) * 0.028;
 
-      // Spawn rate: starts slow, ramps every 5 seconds
+      // spawn rate: starts at 1400ms, drops 100ms per 5-second phase, floor 450ms
       const phase = Math.floor(elapsed / 5);
-      const spawnInterval = Math.max(500, 1400 - phase * 120);
-
-      const canSpawn =
-        now - lastSpawnRef.current > spawnInterval &&
-        objectsRef.current.length < MAX_OBJECTS;
-
-      if (canSpawn) {
-        const newObj = spawnObject(parrotXRef.current);
-        objectsRef.current = [...objectsRef.current, newObj];
+      const spawnMs = Math.max(450, 1400 - phase * 100);
+      if (now - lastSpawnRef.current > spawnMs && objRef.current.length < MAX_OBJ) {
+        spawn();
         lastSpawnRef.current = now;
       }
 
-      // Movement
+      // player movement
+      const w = canvasW.current || 400;
+      const margin = PARROT_W / 2 + 4;
+      let px = parrotPxRef.current;
       let moved = false;
-      if (keysRef.current.left) {
-        parrotXRef.current = Math.max(5, parrotXRef.current - 65 * delta);
-        setParrotX(parrotXRef.current);
-        setParrotDir("left");
-        moved = true;
+      if (keysRef.current.l) { px -= MOVE_SPEED * dt; moved = true; setFacing("l"); }
+      if (keysRef.current.r) { px += MOVE_SPEED * dt; moved = true; setFacing("r"); }
+      if (moved) {
+        px = Math.max(margin, Math.min(w - margin, px));
+        parrotPxRef.current = px;
+        setParrotPx(px);
       }
-      if (keysRef.current.right) {
-        parrotXRef.current = Math.min(95, parrotXRef.current + 65 * delta);
-        setParrotX(parrotXRef.current);
-        setParrotDir("right");
-        moved = true;
-      }
-      if (!moved) setParrotDir("idle");
 
-      const gameArea = gameAreaRef.current;
-      const areaHeight = gameArea?.clientHeight ?? 600;
-      const areaWidth = gameArea?.clientWidth ?? 400;
-      const parrotPx = (parrotXRef.current / 100) * areaWidth;
-      const parrotPy = areaHeight - 72;
-
-      objectsRef.current = objectsRef.current
-        .map((obj) => ({
-          ...obj,
-          y: obj.y + obj.speed * speedFactor * delta * 10,
-          rotation: obj.rotation + obj.rotSpeed,
-        }))
-        .filter((obj) => obj.y < 112);
-
-      // Collision check
+      // move objects, cull off-screen
+      const h = canvasH.current || 600;
+      const playerY = h - PARROT_W - 4;
+      const playerR = 22;
       let justHit = false;
-      for (const obj of objectsRef.current) {
-        const objPx = (obj.x / 100) * areaWidth;
-        const objPy = (obj.y / 100) * areaHeight;
-        const dx = parrotPx - objPx;
-        const dy = parrotPy - objPy;
-        if (Math.sqrt(dx * dx + dy * dy) < HIT_RADIUS + obj.size / 3.5) {
+
+      objRef.current = objRef.current
+        .map(o => ({ ...o, y: o.y + o.speed * speedFactor * dt, rot: o.rot + o.rotSpeed * dt }))
+        .filter(o => o.y < h + 60);
+
+      for (const o of objRef.current) {
+        const dx = o.x - px;
+        const dy = o.y - playerY;
+        if (Math.sqrt(dx * dx + dy * dy) < playerR + o.size * 0.28) {
           justHit = true;
           break;
         }
       }
 
-      if (justHit && !hitRef.current) {
-        hitRef.current = true;
+      setObjects([...objRef.current]);
+
+      if (justHit && !deadRef.current) {
+        deadRef.current = true;
         setHit(true);
-        aliveRef.current = false;
         playHit();
-        triggerShake();
-        triggerFlash("rgba(255,0,0,0.55)");
-        const survived = parseFloat(
-          Math.min(totalTime, totalTime - timeLeftRef.current + 0.1).toFixed(1)
-        );
-        setTimeout(() => onGameOver(survived), 700);
+        setShake(true);  setTimeout(() => setShake(false), 400);
+        setFlash(true);  setTimeout(() => setFlash(false), 200);
+        const survived = parseFloat(Math.min(totalTime, totalTime - timeRef.current + 0.1).toFixed(1));
+        setTimeout(() => onGameOver(survived), 750);
         return;
       }
 
-      setObjects([...objectsRef.current]);
       rafRef.current = requestAnimationFrame(loop);
     };
 
     rafRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [started, spawnObject, onGameOver, totalTime, triggerShake, triggerFlash, setParrotDir]);
+  }, [started, spawn, onGameOver, totalTime]);
 
+  // ── keyboard ───────────────────────────────────────────────────────────────
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "ArrowLeft" || e.key === "a") keysRef.current.left = true;
-      if (e.key === "ArrowRight" || e.key === "d") keysRef.current.right = true;
+    const dn = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft"  || e.key === "a") keysRef.current.l = true;
+      if (e.key === "ArrowRight" || e.key === "d") keysRef.current.r = true;
     };
-    const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key === "ArrowLeft" || e.key === "a") keysRef.current.left = false;
-      if (e.key === "ArrowRight" || e.key === "d") keysRef.current.right = false;
+    const up = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft"  || e.key === "a") keysRef.current.l = false;
+      if (e.key === "ArrowRight" || e.key === "d") keysRef.current.r = false;
     };
-    window.addEventListener("keydown", onKey);
-    window.addEventListener("keyup", onKeyUp);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("keyup", onKeyUp);
-    };
+    window.addEventListener("keydown", dn);
+    window.addEventListener("keyup",   up);
+    return () => { window.removeEventListener("keydown", dn); window.removeEventListener("keyup", up); };
   }, []);
 
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartX.current = e.touches[0].clientX;
-    isDragging.current = true;
+  // ── swipe on the game canvas (not the buttons) ────────────────────────────
+  const onCanvasTouchStart = (e: React.TouchEvent) => {
+    swipeXRef.current = e.touches[0].clientX;
   };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (!isDragging.current || touchStartX.current === null) return;
-    const dx = e.touches[0].clientX - touchStartX.current;
-    const areaWidth = gameAreaRef.current?.clientWidth ?? 400;
-    const pctMove = (dx / areaWidth) * 100;
-    if (Math.abs(pctMove) > 0.5) {
-      parrotXRef.current = Math.max(5, Math.min(95, parrotXRef.current + pctMove * 0.85));
-      setParrotX(parrotXRef.current);
-      setParrotDir(pctMove < 0 ? "left" : "right");
-    }
-    touchStartX.current = e.touches[0].clientX;
+  const onCanvasTouchMove = (e: React.TouchEvent) => {
+    if (swipeXRef.current === null) return;
+    const dx = e.touches[0].clientX - swipeXRef.current;
+    const w  = canvasW.current || 400;
+    const margin = PARROT_W / 2 + 4;
+    const pct = dx / w;          // fraction of screen width
+    let px = parrotPxRef.current + pct * w * 0.9;
+    px = Math.max(margin, Math.min(w - margin, px));
+    parrotPxRef.current = px;
+    setParrotPx(px);
+    if (dx < 0) setFacing("l"); else setFacing("r");
+    swipeXRef.current = e.touches[0].clientX;
   };
+  const onCanvasTouchEnd = () => { swipeXRef.current = null; };
 
-  const handleTouchEnd = () => {
-    isDragging.current = false;
-    touchStartX.current = null;
-    setParrotDir("idle");
-  };
-
-  const timerPct = (timeLeft / totalTime) * 100;
-  const timerColor = timerPct > 50 ? "#00ff78" : timerPct > 25 ? "#ffdc00" : "#ff3232";
-  const dangerZone = timerPct < 25;
-  const gracePeriodActive = started && (performance.now() - survivalStartRef.current) / 1000 < GRACE_PERIOD;
-
-  const parrotScale = parrotAnim !== "idle" ? 0.88 : 1;
-  const parrotSkew = parrotAnim === "left" ? -10 : parrotAnim === "right" ? 10 : 0;
+  // ── derived visuals ────────────────────────────────────────────────────────
+  const timerPct  = (timeLeft / totalTime) * 100;
+  const timerCol  = timerPct > 50 ? "#00ff78" : timerPct > 25 ? "#ffdc00" : "#ff3232";
+  const danger    = timerPct < 25;
+  const graceLbl  = started && (performance.now() - startTsRef.current) / 1000 < GRACE;
 
   return (
     <div
-      ref={gameAreaRef}
-      className={`relative w-full h-screen overflow-hidden select-none ${screenShake ? "shake-anim" : ""}`}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
+      ref={wrapRef}
+      className={shake ? "shake-anim" : ""}
       style={{
-        cursor: "none",
-        background: dangerZone
-          ? "linear-gradient(180deg, #1a0000 0%, #2a0a0a 50%, #1a0000 100%)"
-          : "linear-gradient(180deg, #07041a 0%, #0f0630 35%, #1a0a45 65%, #0a0820 100%)",
+        position: "fixed", inset: 0,
+        display: "flex", flexDirection: "column",
+        background: danger
+          ? "linear-gradient(180deg,#1a0000,#2a0a0a 50%,#1a0000)"
+          : "linear-gradient(180deg,#07041a,#0f0630 35%,#1a0a45 65%,#0a0820)",
+        overflow: "hidden",
+        userSelect: "none",
       }}
     >
-      {/* Background stars (static for perf) */}
-      <div className="absolute inset-0 pointer-events-none">
-        {Array.from({ length: 25 }, (_, i) => (
-          <div
-            key={i}
-            className="star"
-            style={{
-              left: `${(i * 4.3 + 2) % 100}%`,
-              top: `${(i * 3.9 + 5) % 70}%`,
-              width: `${(i % 3) + 1}px`,
-              height: `${(i % 3) + 1}px`,
-              animationDelay: `${(i * 0.27) % 3}s`,
-              animationDuration: `${1.5 + (i % 4) * 0.5}s`,
-            }}
-          />
-        ))}
-      </div>
-
-      {/* Horizon glow */}
-      <div
-        className="absolute bottom-0 left-0 right-0 pointer-events-none"
-        style={{
-          height: "120px",
-          background: dangerZone
-            ? "linear-gradient(0deg, rgba(180,0,0,0.25) 0%, transparent 100%)"
-            : "linear-gradient(0deg, rgba(80,0,180,0.2) 0%, transparent 100%)",
-        }}
-      />
-
-      {/* Timer bar */}
-      <div className="absolute top-0 left-0 right-0 z-30 p-3">
-        <div className="flex justify-between items-center mb-1.5">
-          <span
-            className="font-black text-base"
-            style={{ color: timerColor, textShadow: `0 0 10px ${timerColor}` }}
-          >
+      {/* ── HEADER / TIMER ────────────────────────────────────────────────── */}
+      <div style={{
+        height: HDR_H, flexShrink: 0,
+        padding: "10px 14px 8px",
+        background: "rgba(0,0,0,0.4)",
+        borderBottom: "1px solid rgba(255,255,255,0.06)",
+        zIndex: 30,
+      }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+          <span style={{ fontWeight:900, fontSize:"1rem", color:timerCol, textShadow:`0 0 10px ${timerCol}` }}>
             ⏱️ {timeLeft.toFixed(1)}s
           </span>
-          <span className="font-bold text-sm" style={{ color: dangerZone ? "#ff6060" : "#ffd700" }}>
-            {gracePeriodActive ? "🟢 EASY START" : dangerZone ? "⚠️ DANGER!" : "Dodge!"}
+          <span style={{ fontWeight:700, fontSize:"0.8rem", color: danger ? "#ff6060" : "#ffd700" }}>
+            {graceLbl ? "🟢 EASY START" : danger ? "⚠️ DANGER!" : "Dodge!"}
           </span>
         </div>
-        <div className="progress-bar">
-          <div
-            style={{
-              height: "100%",
-              borderRadius: "9999px",
-              width: `${timerPct}%`,
-              background: timerColor,
-              boxShadow: `0 0 ${dangerZone ? 20 : 10}px ${timerColor}`,
-              transition: "width 0.1s linear, background 0.3s",
-            }}
-          />
+        <div style={{ height:8, borderRadius:999, background:"rgba(255,255,255,0.1)", overflow:"hidden" }}>
+          <div style={{
+            height:"100%", borderRadius:999,
+            width:`${timerPct}%`,
+            background: timerCol,
+            boxShadow:`0 0 ${danger?18:8}px ${timerCol}`,
+            transition:"width 0.1s linear, background 0.3s",
+          }}/>
         </div>
       </div>
 
-      {/* Falling objects */}
-      {objects.map((obj) => (
-        <div
-          key={obj.id}
-          style={{
-            position: "absolute",
-            left: `${obj.x}%`,
-            top: `${obj.y}%`,
-            fontSize: obj.size,
-            transform: `translate(-50%, -50%) rotate(${obj.rotation}deg)`,
-            pointerEvents: "none",
-            willChange: "transform, top",
-          }}
-        >
-          {obj.emoji}
-        </div>
-      ))}
-
-      {/* Ground line */}
+      {/* ── GAME CANVAS ───────────────────────────────────────────────────── */}
       <div
-        className="absolute left-0 right-0 pointer-events-none"
-        style={{
-          bottom: "80px",
-          height: "2px",
-          background: dangerZone
-            ? "linear-gradient(90deg, transparent, rgba(255,80,80,0.4), transparent)"
-            : "linear-gradient(90deg, transparent, rgba(120,80,255,0.3), transparent)",
-        }}
-      />
+        ref={canvasRef}
+        style={{ flex:1, position:"relative", overflow:"hidden" }}
+        onTouchStart={onCanvasTouchStart}
+        onTouchMove={onCanvasTouchMove}
+        onTouchEnd={onCanvasTouchEnd}
+      >
+        {/* stars */}
+        {Array.from({length:22},(_,i)=>(
+          <div key={i} className="star" style={{
+            position:"absolute",
+            left:`${(i*4.7+3)%100}%`,
+            top:`${(i*5.1+2)%85}%`,
+            width:`${(i%3)+1}px`,
+            height:`${(i%3)+1}px`,
+            animationDelay:`${(i*0.3)%3}s`,
+            animationDuration:`${1.6+(i%4)*0.5}s`,
+          }}/>
+        ))}
 
-      {/* Parrot character */}
-      <div
-        style={{
+        {/* horizon glow */}
+        <div style={{
+          position:"absolute", bottom:0, left:0, right:0, height:90, pointerEvents:"none",
+          background: danger
+            ? "linear-gradient(0deg,rgba(200,0,0,0.2),transparent)"
+            : "linear-gradient(0deg,rgba(80,0,200,0.15),transparent)",
+        }}/>
+
+        {/* ground line */}
+        <div style={{
+          position:"absolute", bottom: PARROT_W + 6, left:0, right:0,
+          height:1, pointerEvents:"none",
+          background: danger
+            ? "linear-gradient(90deg,transparent,rgba(255,80,80,0.35),transparent)"
+            : "linear-gradient(90deg,transparent,rgba(130,80,255,0.25),transparent)",
+        }}/>
+
+        {/* falling objects */}
+        {objects.map(o=>(
+          <div key={o.id} style={{
+            position:"absolute",
+            left: o.x,
+            top:  o.y,
+            fontSize: o.size,
+            transform:`translate(-50%,-50%) rotate(${o.rot}deg)`,
+            pointerEvents:"none",
+            lineHeight:1,
+            willChange:"transform,top,left",
+          }}>
+            {o.emoji}
+          </div>
+        ))}
+
+        {/* ── PARROT ────────────────────────────────────────────────────── */}
+        <div style={{
           position: "absolute",
-          left: `${parrotX}%`,
-          bottom: "24px",
-          transform: `translateX(-50%) scaleX(${parrotAnim === "left" ? -1 : 1}) scaleY(${parrotScale}) skewX(${parrotSkew}deg)`,
-          fontSize: 52,
-          transition: "transform 0.08s ease",
-          filter: hit
-            ? "drop-shadow(0 0 30px red)"
-            : dangerZone
-            ? "drop-shadow(0 0 18px rgba(255,120,0,0.9))"
-            : "drop-shadow(0 0 14px rgba(255,220,0,0.75))",
-          zIndex: 20,
-          willChange: "transform, left",
+          left: parrotPx,
+          bottom: 4,
+          transform: `translateX(-50%) scaleX(${facing==="l"?-1:1})`,
+          fontSize: PARROT_W,
           lineHeight: 1,
-        }}
-      >
-        {hit ? "💀" : "🦜"}
+          zIndex: 20,
+          transition: "transform 0.06s ease",
+          filter: hit
+            ? "drop-shadow(0 0 28px red)"
+            : danger
+            ? "drop-shadow(0 0 16px rgba(255,120,0,0.95))"
+            : "drop-shadow(0 0 14px rgba(255,220,0,0.8))",
+          willChange: "left",
+          pointerEvents: "none",
+        }}>
+          {hit ? "💀" : "🦜"}
+        </div>
+
+        {/* hit overlay */}
+        {hit && (
+          <div style={{position:"absolute",inset:0,background:"rgba(220,0,0,0.35)",pointerEvents:"none",zIndex:25}}/>
+        )}
+
+        {/* flash overlay */}
+        {flash && (
+          <div style={{position:"absolute",inset:0,background:"rgba(255,50,50,0.55)",pointerEvents:"none",zIndex:26}}/>
+        )}
+
+        {/* countdown overlay */}
+        {!started && (
+          <div style={{
+            position:"absolute",inset:0,
+            display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+            background:"rgba(0,0,0,0.65)",zIndex:50,
+          }}>
+            <div key={countdown} className="pop-anim" style={{
+              fontSize:"9rem", fontWeight:900, lineHeight:1,
+              color:"#FFD700", textShadow:"0 0 30px #FFD700, 0 0 80px #FFD70066",
+            }}>
+              {countdown}
+            </div>
+            <p style={{color:"rgba(255,255,255,0.6)",fontSize:"1.1rem",marginTop:12}}>
+              Get ready to PANIC!
+            </p>
+          </div>
+        )}
       </div>
 
-      {/* Mobile control buttons */}
-      <div
-        style={{
-          position: "absolute",
-          bottom: 0,
-          left: 0,
-          right: 0,
-          height: "72px",
-          display: "flex",
-          zIndex: 40,
-        }}
-      >
+      {/* ── CONTROL BAR ───────────────────────────────────────────────────── */}
+      <div style={{
+        height: CTRL_H, flexShrink: 0,
+        display: "flex",
+        borderTop: "2px solid rgba(255,255,255,0.08)",
+        background: "rgba(0,0,0,0.55)",
+        zIndex: 40,
+      }}>
+        {/* LEFT button */}
         <button
           style={{
             flex: 1,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            background: "rgba(255,255,255,0.06)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            background: "rgba(255,255,255,0.07)",
             border: "none",
-            borderTop: "1px solid rgba(255,255,255,0.08)",
-            borderRight: "1px solid rgba(255,255,255,0.05)",
-            color: "rgba(255,255,255,0.5)",
-            fontSize: "1.75rem",
+            borderRight: "1px solid rgba(255,255,255,0.07)",
+            color: "rgba(255,255,255,0.75)",
+            fontSize: "2.25rem",
             cursor: "pointer",
             WebkitTapHighlightColor: "transparent",
             touchAction: "none",
+            transition: "background 0.1s",
           }}
-          onTouchStart={(e) => { e.preventDefault(); keysRef.current.left = true; }}
-          onTouchEnd={(e) => { e.preventDefault(); keysRef.current.left = false; }}
-          onMouseDown={() => keysRef.current.left = true}
-          onMouseUp={() => keysRef.current.left = false}
-          onMouseLeave={() => keysRef.current.left = false}
+          onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); keysRef.current.l = true; setFacing("l"); }}
+          onPointerUp={() => keysRef.current.l = false}
+          onPointerCancel={() => keysRef.current.l = false}
+          onPointerLeave={() => keysRef.current.l = false}
         >
           ◀
         </button>
+
+        {/* RIGHT button */}
         <button
           style={{
             flex: 1,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            background: "rgba(255,255,255,0.06)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            background: "rgba(255,255,255,0.07)",
             border: "none",
-            borderTop: "1px solid rgba(255,255,255,0.08)",
-            borderLeft: "1px solid rgba(255,255,255,0.05)",
-            color: "rgba(255,255,255,0.5)",
-            fontSize: "1.75rem",
+            borderLeft: "1px solid rgba(255,255,255,0.07)",
+            color: "rgba(255,255,255,0.75)",
+            fontSize: "2.25rem",
             cursor: "pointer",
             WebkitTapHighlightColor: "transparent",
             touchAction: "none",
+            transition: "background 0.1s",
           }}
-          onTouchStart={(e) => { e.preventDefault(); keysRef.current.right = true; }}
-          onTouchEnd={(e) => { e.preventDefault(); keysRef.current.right = false; }}
-          onMouseDown={() => keysRef.current.right = true}
-          onMouseUp={() => keysRef.current.right = false}
-          onMouseLeave={() => keysRef.current.right = false}
+          onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); keysRef.current.r = true; setFacing("r"); }}
+          onPointerUp={() => keysRef.current.r = false}
+          onPointerCancel={() => keysRef.current.r = false}
+          onPointerLeave={() => keysRef.current.r = false}
         >
           ▶
         </button>
       </div>
-
-      {/* Flash overlay */}
-      {flashColor && (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            background: flashColor,
-            zIndex: 50,
-            pointerEvents: "none",
-          }}
-        />
-      )}
-
-      {/* Countdown overlay */}
-      {!started && (
-        <div className="absolute inset-0 flex items-center justify-center z-50 bg-black/65">
-          <div className="text-center pop-anim" key={countdown}>
-            <div
-              className="font-black neon-text"
-              style={{ fontSize: "9rem", color: "#FFD700", lineHeight: 1 }}
-            >
-              {countdown}
-            </div>
-            <p className="text-white/60 text-xl mt-2">Get ready!</p>
-          </div>
-        </div>
-      )}
-
-      {/* Hit overlay */}
-      {hit && (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            background: "rgba(200,0,0,0.35)",
-            zIndex: 40,
-            pointerEvents: "none",
-          }}
-        />
-      )}
     </div>
   );
 }
