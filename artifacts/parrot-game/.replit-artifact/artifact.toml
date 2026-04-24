@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Parrot Survival Game"
+version = "1.0.0"
+id = "artifacts/parrot-game"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23655
+
+[services.development]
+run = "pnpm --filter @workspace/parrot-game run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/parrot-game", "run", "build" ]
+publicDir = "artifacts/parrot-game/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23655"
+BASE_PATH = "/"
