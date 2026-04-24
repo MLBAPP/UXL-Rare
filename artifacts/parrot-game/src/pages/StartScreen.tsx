@@ -1,6 +1,7 @@
 import StarField from "../components/StarField";
 import ParrotEmoji from "../components/ParrotEmoji";
 import { BASE_SURVIVAL_TIME, BONUS_SECONDS_PER_CORRECT, QUESTIONS } from "../data/questions";
+import { initAudio } from "../lib/sounds";
 
 interface StartScreenProps {
   onStart: () => void;
@@ -48,7 +49,7 @@ export default function StartScreen({ onStart }: StartScreenProps) {
           </div>
         </div>
 
-        <button className="btn-primary w-full text-xl" onClick={onStart}>
+        <button className="btn-primary w-full text-xl" onClick={() => { initAudio(); onStart(); }}>
           LET'S GO! 🚀
         </button>
 

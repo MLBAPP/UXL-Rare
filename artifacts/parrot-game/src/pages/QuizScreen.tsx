@@ -1,6 +1,7 @@
 import { useState } from "react";
 import StarField from "../components/StarField";
 import { QUESTIONS, BONUS_SECONDS_PER_CORRECT } from "../data/questions";
+import { playCorrect, playWrong } from "../lib/sounds";
 
 interface QuizScreenProps {
   onComplete: (bonusSeconds: number) => void;
@@ -12,9 +13,10 @@ export default function QuizScreen({ onComplete }: QuizScreenProps) {
   const [correctCount, setCorrectCount] = useState(0);
   const [bonusTotal, setBonusTotal] = useState(0);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [shake, setShake] = useState(false);
 
   const question = QUESTIONS[currentIndex];
-  const progress = ((currentIndex) / QUESTIONS.length) * 100;
+  const progress = (currentIndex / QUESTIONS.length) * 100;
 
   function handleAnswer(idx: number) {
     if (selected !== null) return;
@@ -24,11 +26,17 @@ export default function QuizScreen({ onComplete }: QuizScreenProps) {
     const isCorrect = idx === question.correctIndex;
     let newBonus = bonusTotal;
     let newCorrect = correctCount;
+
     if (isCorrect) {
+      playCorrect();
       newBonus = bonusTotal + BONUS_SECONDS_PER_CORRECT;
       newCorrect = correctCount + 1;
       setCorrectCount(newCorrect);
       setBonusTotal(newBonus);
+    } else {
+      playWrong();
+      setShake(true);
+      setTimeout(() => setShake(false), 400);
     }
 
     setTimeout(() => {
@@ -46,7 +54,9 @@ export default function QuizScreen({ onComplete }: QuizScreenProps) {
     <div className="quiz-bg relative min-h-screen flex flex-col p-4 overflow-hidden">
       <StarField count={40} />
 
-      <div className="relative z-10 flex flex-col h-full max-w-md mx-auto w-full">
+      <div
+        className={`relative z-10 flex flex-col h-full max-w-md mx-auto w-full ${shake ? "shake-anim" : ""}`}
+      >
         {/* Header */}
         <div className="flex items-center justify-between mb-4 pt-2">
           <div className="text-yellow-300 font-black text-lg">
@@ -110,7 +120,6 @@ export default function QuizScreen({ onComplete }: QuizScreenProps) {
           </div>
         )}
 
-        {/* Correct count */}
         <div className="text-center mt-4 text-gray-500 text-sm">
           {correctCount} correct so far
         </div>

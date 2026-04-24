@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BASE_SURVIVAL_TIME } from "../data/questions";
+import { playCountdownBeep, playHit, playGameStart } from "../lib/sounds";
 
 interface FallingObject {
   id: number;
@@ -12,10 +13,8 @@ interface FallingObject {
   rotSpeed: number;
 }
 
-const OBSTACLE_EMOJIS = ["💣", "🪨", "⚡", "🌶️", "🔥", "💥", "🌪️", "☄️", "🎯", "🧨"];
-const GAME_WIDTH = 100; // percent
-const PARROT_SIZE = 52;
-const HIT_RADIUS = 28;
+const OBSTACLE_EMOJIS = ["💣", "🪨", "⚡", "🌶️", "🔥", "💥", "🌪️", "☄️", "🎯", "🧨", "🔴", "💢", "👹", "🦠"];
+const HIT_RADIUS = 26;
 
 let nextId = 0;
 
@@ -27,38 +26,47 @@ interface GameScreenProps {
 export default function GameScreen({ bonusSeconds, onGameOver }: GameScreenProps) {
   const totalTime = BASE_SURVIVAL_TIME + bonusSeconds;
   const [timeLeft, setTimeLeft] = useState(totalTime);
-  const [parrotX, setParrotX] = useState(50); // percent
+  const [parrotX, setParrotX] = useState(50);
   const [objects, setObjects] = useState<FallingObject[]>([]);
   const [hit, setHit] = useState(false);
   const [started, setStarted] = useState(false);
   const [countdown, setCountdown] = useState(3);
+  const [screenShake, setScreenShake] = useState(false);
+  const [flashColor, setFlashColor] = useState<string | null>(null);
 
   const parrotXRef = useRef(50);
   const gameAreaRef = useRef<HTMLDivElement>(null);
   const objectsRef = useRef<FallingObject[]>([]);
   const hitRef = useRef(false);
   const aliveRef = useRef(true);
-  const survivalStartRef = useRef<number>(0);
-  const survivalTimeRef = useRef<number>(0);
-  const touchStartX = useRef<number | null>(null);
-  const isDragging = useRef(false);
   const rafRef = useRef<number>(0);
   const lastSpawnRef = useRef<number>(0);
-  const spawnIntervalRef = useRef<number>(1200);
-  const lastFrameRef = useRef<number>(0);
+  const touchStartX = useRef<number | null>(null);
+  const isDragging = useRef(false);
   const keysRef = useRef<{ left: boolean; right: boolean }>({ left: false, right: false });
   const timeLeftRef = useRef(totalTime);
+  const survivalStartRef = useRef<number>(0);
+
+  const triggerShake = useCallback(() => {
+    setScreenShake(true);
+    setTimeout(() => setScreenShake(false), 350);
+  }, []);
+
+  const triggerFlash = useCallback((color: string) => {
+    setFlashColor(color);
+    setTimeout(() => setFlashColor(null), 150);
+  }, []);
 
   const spawnObject = useCallback(() => {
     const obj: FallingObject = {
       id: nextId++,
-      x: Math.random() * 90 + 5,
+      x: Math.random() * 88 + 6,
       y: -10,
-      speed: Math.random() * 12 + 8,
-      size: Math.random() * 20 + 30,
+      speed: Math.random() * 18 + 14,
+      size: Math.random() * 18 + 28,
       emoji: OBSTACLE_EMOJIS[Math.floor(Math.random() * OBSTACLE_EMOJIS.length)],
       rotation: 0,
-      rotSpeed: (Math.random() - 0.5) * 4,
+      rotSpeed: (Math.random() - 0.5) * 6,
     };
     return obj;
   }, []);
@@ -66,10 +74,12 @@ export default function GameScreen({ bonusSeconds, onGameOver }: GameScreenProps
   useEffect(() => {
     if (countdown <= 0) return;
     const t = setTimeout(() => {
+      playCountdownBeep(countdown === 1);
       if (countdown === 1) {
         setStarted(true);
         setCountdown(0);
         survivalStartRef.current = performance.now();
+        playGameStart();
       } else {
         setCountdown((c) => c - 1);
       }
@@ -79,18 +89,15 @@ export default function GameScreen({ bonusSeconds, onGameOver }: GameScreenProps
 
   useEffect(() => {
     if (!started) return;
-
     const timerInterval = setInterval(() => {
       timeLeftRef.current -= 0.1;
       const clamped = Math.max(0, timeLeftRef.current);
       setTimeLeft(clamped);
       if (clamped <= 0 && aliveRef.current) {
         aliveRef.current = false;
-        survivalTimeRef.current = totalTime;
         onGameOver(totalTime);
       }
     }, 100);
-
     return () => clearInterval(timerInterval);
   }, [started, onGameOver, totalTime]);
 
@@ -106,21 +113,22 @@ export default function GameScreen({ bonusSeconds, onGameOver }: GameScreenProps
       lastTime = now;
       const elapsed = (now - survivalStartRef.current) / 1000;
 
-      const speed = Math.min(2.5, 1 + elapsed / 20);
-      spawnIntervalRef.current = Math.max(400, 1200 - elapsed * 20);
+      const globalSpeed = 1 + elapsed / 12;
+      const spawnInterval = Math.max(350, 900 - elapsed * 18);
 
-      if (now - lastSpawnRef.current > spawnIntervalRef.current) {
-        const newObj = spawnObject();
-        objectsRef.current = [...objectsRef.current, newObj];
+      if (now - lastSpawnRef.current > spawnInterval) {
+        const count = elapsed > 15 ? 2 : 1;
+        const newObjs = Array.from({ length: count }, () => spawnObject());
+        objectsRef.current = [...objectsRef.current, ...newObjs];
         lastSpawnRef.current = now;
       }
 
       if (keysRef.current.left) {
-        parrotXRef.current = Math.max(5, parrotXRef.current - 60 * delta);
+        parrotXRef.current = Math.max(5, parrotXRef.current - 70 * delta);
         setParrotX(parrotXRef.current);
       }
       if (keysRef.current.right) {
-        parrotXRef.current = Math.min(95, parrotXRef.current + 60 * delta);
+        parrotXRef.current = Math.min(95, parrotXRef.current + 70 * delta);
         setParrotX(parrotXRef.current);
       }
 
@@ -133,7 +141,7 @@ export default function GameScreen({ bonusSeconds, onGameOver }: GameScreenProps
       objectsRef.current = objectsRef.current
         .map((obj) => ({
           ...obj,
-          y: obj.y + obj.speed * speed * delta * 10,
+          y: obj.y + obj.speed * globalSpeed * delta * 10,
           rotation: obj.rotation + obj.rotSpeed,
         }))
         .filter((obj) => obj.y < 115);
@@ -155,11 +163,13 @@ export default function GameScreen({ bonusSeconds, onGameOver }: GameScreenProps
         hitRef.current = true;
         setHit(true);
         aliveRef.current = false;
+        playHit();
+        triggerShake();
+        triggerFlash("rgba(255,0,0,0.5)");
         const survived = Math.min(totalTime, totalTime - timeLeftRef.current + 0.1);
-        survivalTimeRef.current = survived;
         setTimeout(() => {
           onGameOver(parseFloat(survived.toFixed(1)));
-        }, 600);
+        }, 700);
         return;
       }
 
@@ -169,7 +179,7 @@ export default function GameScreen({ bonusSeconds, onGameOver }: GameScreenProps
 
     rafRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [started, spawnObject, onGameOver, totalTime]);
+  }, [started, spawnObject, onGameOver, totalTime, triggerShake, triggerFlash]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -182,7 +192,10 @@ export default function GameScreen({ bonusSeconds, onGameOver }: GameScreenProps
     };
     window.addEventListener("keydown", onKey);
     window.addEventListener("keyup", onKeyUp);
-    return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("keyup", onKeyUp); };
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKeyUp);
+    };
   }, []);
 
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -195,7 +208,7 @@ export default function GameScreen({ bonusSeconds, onGameOver }: GameScreenProps
     const dx = e.touches[0].clientX - touchStartX.current;
     const areaWidth = gameAreaRef.current?.clientWidth ?? 400;
     const pctMove = (dx / areaWidth) * 100;
-    parrotXRef.current = Math.max(5, Math.min(95, parrotXRef.current + pctMove * 0.8));
+    parrotXRef.current = Math.max(5, Math.min(95, parrotXRef.current + pctMove * 0.9));
     setParrotX(parrotXRef.current);
     touchStartX.current = e.touches[0].clientX;
   };
@@ -206,16 +219,24 @@ export default function GameScreen({ bonusSeconds, onGameOver }: GameScreenProps
   };
 
   const timerPct = (timeLeft / totalTime) * 100;
-  const timerColor = timerPct > 50 ? "#00ff78" : timerPct > 25 ? "#ffdc00" : "#ff3232";
+  const timerColor =
+    timerPct > 50 ? "#00ff78" : timerPct > 25 ? "#ffdc00" : "#ff3232";
+
+  const dangerZone = timerPct < 25;
 
   return (
     <div
       ref={gameAreaRef}
-      className="game-bg relative w-full h-screen overflow-hidden select-none"
+      className={`game-bg relative w-full h-screen overflow-hidden select-none ${screenShake ? "shake-anim" : ""}`}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
-      style={{ cursor: "none" }}
+      style={{
+        cursor: "none",
+        background: dangerZone
+          ? "linear-gradient(180deg, #1a0000 0%, #2d0000 40%, #1a0000 100%)"
+          : undefined,
+      }}
     >
       {/* Stars */}
       <div className="absolute inset-0 pointer-events-none">
@@ -224,11 +245,11 @@ export default function GameScreen({ bonusSeconds, onGameOver }: GameScreenProps
             key={i}
             className="star"
             style={{
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 60}%`,
-              width: `${Math.random() * 2 + 1}px`,
-              height: `${Math.random() * 2 + 1}px`,
-              animationDelay: `${Math.random() * 3}s`,
+              left: `${(i * 37.3) % 100}%`,
+              top: `${(i * 51.7) % 60}%`,
+              width: `${(i % 3) + 1}px`,
+              height: `${(i % 3) + 1}px`,
+              animationDelay: `${(i * 0.3) % 3}s`,
             }}
           />
         ))}
@@ -237,13 +258,24 @@ export default function GameScreen({ bonusSeconds, onGameOver }: GameScreenProps
       {/* Timer bar */}
       <div className="absolute top-0 left-0 right-0 z-30 p-3">
         <div className="flex justify-between items-center mb-1.5">
-          <span className="text-white font-black text-base">⏱️ {timeLeft.toFixed(1)}s</span>
-          <span className="text-yellow-300 font-bold text-sm">Dodge everything!</span>
+          <span
+            className="font-black text-base"
+            style={{ color: timerColor, textShadow: `0 0 10px ${timerColor}` }}
+          >
+            ⏱️ {timeLeft.toFixed(1)}s
+          </span>
+          <span className="text-yellow-300 font-bold text-sm">
+            {dangerZone ? "⚠️ DANGER ZONE!" : "Dodge everything!"}
+          </span>
         </div>
         <div className="progress-bar">
           <div
             className="h-full rounded-full transition-all duration-100"
-            style={{ width: `${timerPct}%`, background: timerColor, boxShadow: `0 0 10px ${timerColor}` }}
+            style={{
+              width: `${timerPct}%`,
+              background: timerColor,
+              boxShadow: `0 0 ${dangerZone ? 18 : 10}px ${timerColor}`,
+            }}
           />
         </div>
       </div>
@@ -264,59 +296,78 @@ export default function GameScreen({ bonusSeconds, onGameOver }: GameScreenProps
         </div>
       ))}
 
-      {/* Ground line */}
+      {/* Ground hint */}
       <div className="absolute bottom-16 left-0 right-0 h-px bg-white/10" />
 
       {/* Parrot */}
       <div
-        className={hit ? "shake-anim" : ""}
         style={{
           position: "absolute",
           left: `${parrotX}%`,
           bottom: "20px",
           transform: "translateX(-50%)",
-          fontSize: PARROT_SIZE,
+          fontSize: 52,
           transition: "none",
-          filter: hit ? "drop-shadow(0 0 20px red)" : "drop-shadow(0 0 12px rgba(255,220,0,0.6))",
+          filter: hit
+            ? "drop-shadow(0 0 25px red)"
+            : dangerZone
+            ? "drop-shadow(0 0 16px rgba(255,100,0,0.9))"
+            : "drop-shadow(0 0 12px rgba(255,220,0,0.7))",
           zIndex: 20,
         }}
       >
-        🦜
+        {hit ? "💀" : "🦜"}
       </div>
 
-      {/* Mobile controls */}
-      <div className="absolute bottom-0 left-0 right-0 flex z-40 pointer-events-none" style={{ height: "60px" }}>
+      {/* Mobile tap controls */}
+      <div
+        className="absolute bottom-0 left-0 right-0 flex z-40 pointer-events-none"
+        style={{ height: "60px" }}
+      >
         <div
-          className="flex-1 flex items-center justify-center text-2xl text-white/20 pointer-events-auto"
+          className="flex-1 flex items-center justify-center text-3xl pointer-events-auto"
+          style={{ color: "rgba(255,255,255,0.15)" }}
           onTouchStart={() => { keysRef.current.left = true; }}
           onTouchEnd={() => { keysRef.current.left = false; }}
-          style={{ cursor: "pointer" }}
         >
           ◀
         </div>
         <div
-          className="flex-1 flex items-center justify-center text-2xl text-white/20 pointer-events-auto"
+          className="flex-1 flex items-center justify-center text-3xl pointer-events-auto"
+          style={{ color: "rgba(255,255,255,0.15)" }}
           onTouchStart={() => { keysRef.current.right = true; }}
           onTouchEnd={() => { keysRef.current.right = false; }}
-          style={{ cursor: "pointer" }}
         >
           ▶
         </div>
       </div>
 
+      {/* Flash overlay */}
+      {flashColor && (
+        <div
+          className="absolute inset-0 z-50 pointer-events-none"
+          style={{ background: flashColor }}
+        />
+      )}
+
       {/* Countdown overlay */}
       {!started && (
-        <div className="absolute inset-0 flex items-center justify-center z-50 bg-black/60">
-          <div className="text-center pop-anim">
-            <div className="text-9xl font-black text-yellow-300 neon-text">{countdown}</div>
-            <p className="text-white/70 text-xl mt-2">Get ready!</p>
+        <div className="absolute inset-0 flex items-center justify-center z-50 bg-black/65">
+          <div className="text-center pop-anim" key={countdown}>
+            <div
+              className="font-black neon-text"
+              style={{ fontSize: "8rem", color: "#FFD700" }}
+            >
+              {countdown}
+            </div>
+            <p className="text-white/60 text-xl mt-1">Get ready to PANIC!</p>
           </div>
         </div>
       )}
 
-      {/* Hit flash */}
+      {/* Hit flash full screen */}
       {hit && (
-        <div className="absolute inset-0 bg-red-500/30 z-40 pointer-events-none" />
+        <div className="absolute inset-0 bg-red-600/40 z-40 pointer-events-none" />
       )}
     </div>
   );
