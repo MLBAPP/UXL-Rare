@@ -14,12 +14,12 @@ interface FallingObject {
 }
 
 const EMOJIS = ["💣","🪨","⚡","🌶️","🔥","💥","🌪️","☄️","🎯","🧨","💢","👹"];
-const CTRL_H = 96;   // height of control bar in px
 const HDR_H  = 60;   // height of header/timer in px
 const PARROT_W = 56; // parrot emoji font-size
-const MAX_OBJ = 9;
+const MAX_OBJ = 7;
 const GRACE   = 3;   // seconds of easy start
-const MOVE_SPEED = 280; // px/s
+const MOVE_SPEED = 380; // px/s — faster, smoother movement
+const SPEED_SCALE = 0.6; // global slowdown factor (40% slower)
 
 let uid = 0;
 
@@ -41,6 +41,7 @@ export default function GameScreen({ bonusSeconds, onGameOver }: Props) {
   const [shake,      setShake]      = useState(false);
   const [flash,      setFlash]      = useState(false);
   const [facing,     setFacing]     = useState<"l"|"r">("r");
+  const [score,      setScore]      = useState(0);
 
   // ── refs (no re-render needed) ─────────────────────────────────────────────
   const wrapRef      = useRef<HTMLDivElement>(null);
@@ -95,12 +96,22 @@ export default function GameScreen({ bonusSeconds, onGameOver }: Props) {
     return () => clearTimeout(t);
   }, [countdown]);
 
-  // ── timer ──────────────────────────────────────────────────────────────────
+  // ── timer + score ─────────────────────────────────────────────────────────
+  const scoreRef = useRef(0);
+  const lastScoreTick = useRef(0);
   useEffect(() => {
     if (!started) return;
     const iv = setInterval(() => {
       timeRef.current = Math.max(0, timeRef.current - 0.1);
       setTimeLeft(timeRef.current);
+      // increment score every full second survived
+      const elapsed = totalTime - timeRef.current;
+      const newTick = Math.floor(elapsed);
+      if (newTick > lastScoreTick.current) {
+        lastScoreTick.current = newTick;
+        scoreRef.current = newTick;
+        setScore(newTick);
+      }
       if (timeRef.current <= 0 && !deadRef.current) {
         deadRef.current = true;
         onGameOver(totalTime);
@@ -143,15 +154,15 @@ export default function GameScreen({ bonusSeconds, onGameOver }: Props) {
       prev = now;
       const elapsed = (now - startTsRef.current) / 1000;
 
-      // speed ramp: 0→GRACE very slow, then linearly increasing
+      // speed ramp: very slow at start, linear increase — scaled 40% slower globally
       const speedFactor =
-        elapsed < GRACE
+        (elapsed < GRACE
           ? 0.25 + (elapsed / GRACE) * 0.3
-          : 0.55 + (elapsed - GRACE) * 0.028;
+          : 0.55 + (elapsed - GRACE) * 0.028) * SPEED_SCALE;
 
-      // spawn rate: starts at 1400ms, drops 100ms per 5-second phase, floor 450ms
+      // spawn rate: starts at 2200ms, drops 80ms per 5-second phase, floor 700ms
       const phase = Math.floor(elapsed / 5);
-      const spawnMs = Math.max(450, 1400 - phase * 100);
+      const spawnMs = Math.max(700, 2200 - phase * 80);
       if (now - lastSpawnRef.current > spawnMs && objRef.current.length < MAX_OBJ) {
         spawn();
         lastSpawnRef.current = now;
@@ -275,8 +286,26 @@ export default function GameScreen({ bonusSeconds, onGameOver }: Props) {
           <span style={{ fontWeight:900, fontSize:"1rem", color:timerCol, textShadow:`0 0 10px ${timerCol}` }}>
             ⏱️ {timeLeft.toFixed(1)}s
           </span>
+          {/* Score counter */}
+          <div style={{
+            display:"flex", alignItems:"center", gap:6,
+            background:"rgba(255,220,0,0.12)",
+            border:"1px solid rgba(255,220,0,0.3)",
+            borderRadius:999,
+            padding:"2px 12px",
+          }}>
+            <span style={{fontSize:"0.95rem"}}>⭐</span>
+            <span style={{
+              fontWeight:900, fontSize:"1rem",
+              color:"#FFD700",
+              textShadow:"0 0 10px #FFD70099",
+              minWidth:28, textAlign:"center",
+            }}>
+              {score}
+            </span>
+          </div>
           <span style={{ fontWeight:700, fontSize:"0.8rem", color: danger ? "#ff6060" : "#ffd700" }}>
-            {graceLbl ? "🟢 EASY START" : danger ? "⚠️ DANGER!" : "Dodge!"}
+            {graceLbl ? "🟢 EASY" : danger ? "⚠️ DANGER!" : "Dodge!"}
           </span>
         </div>
         <div style={{ height:8, borderRadius:999, background:"rgba(255,255,255,0.1)", overflow:"hidden" }}>
@@ -395,60 +424,6 @@ export default function GameScreen({ bonusSeconds, onGameOver }: Props) {
         )}
       </div>
 
-      {/* ── CONTROL BAR ───────────────────────────────────────────────────── */}
-      <div style={{
-        height: CTRL_H, flexShrink: 0,
-        display: "flex",
-        borderTop: "2px solid rgba(255,255,255,0.08)",
-        background: "rgba(0,0,0,0.55)",
-        zIndex: 40,
-      }}>
-        {/* LEFT button */}
-        <button
-          style={{
-            flex: 1,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            background: "rgba(255,255,255,0.07)",
-            border: "none",
-            borderRight: "1px solid rgba(255,255,255,0.07)",
-            color: "rgba(255,255,255,0.75)",
-            fontSize: "2.25rem",
-            cursor: "pointer",
-            WebkitTapHighlightColor: "transparent",
-            touchAction: "none",
-            transition: "background 0.1s",
-          }}
-          onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); keysRef.current.l = true; setFacing("l"); }}
-          onPointerUp={() => keysRef.current.l = false}
-          onPointerCancel={() => keysRef.current.l = false}
-          onPointerLeave={() => keysRef.current.l = false}
-        >
-          ◀
-        </button>
-
-        {/* RIGHT button */}
-        <button
-          style={{
-            flex: 1,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            background: "rgba(255,255,255,0.07)",
-            border: "none",
-            borderLeft: "1px solid rgba(255,255,255,0.07)",
-            color: "rgba(255,255,255,0.75)",
-            fontSize: "2.25rem",
-            cursor: "pointer",
-            WebkitTapHighlightColor: "transparent",
-            touchAction: "none",
-            transition: "background 0.1s",
-          }}
-          onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); keysRef.current.r = true; setFacing("r"); }}
-          onPointerUp={() => keysRef.current.r = false}
-          onPointerCancel={() => keysRef.current.r = false}
-          onPointerLeave={() => keysRef.current.r = false}
-        >
-          ▶
-        </button>
-      </div>
     </div>
   );
 }
