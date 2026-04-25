@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FRUIT_POINTS } from "../data/questions";
 import { playCountdownBeep, playHit, playGameStart, playCollect } from "../lib/sounds";
+import { getRandomCharacter, Character } from "../lib/character";
 
 interface FallingObject {
   id: number;
@@ -22,12 +23,12 @@ interface FloatingText {
   text: string;
 }
 
-const HDR_H    = 58;
-const PARROT_W = 56;
-const MAX_OBJ  = 9;
-const GRACE    = 3;
-const MOVE_SPEED  = 380;
-const SPEED_SCALE = 0.6;
+const HDR_H      = 58;
+const PARROT_W   = 56;
+const MAX_OBJ    = 9;
+const GRACE      = 3;
+const MOVE_SPEED = 420;
+const SPEED_SCALE = 0.70;
 
 let uid = 0;
 
@@ -36,28 +37,32 @@ interface Props {
 }
 
 export default function GameScreen({ onGameOver }: Props) {
-  const [parrotPx,      setParrotPx]     = useState(0);
-  const [objects,       setObjects]      = useState<FallingObject[]>([]);
+  const [character] = useState<Character>(() => getRandomCharacter());
+
+  const [parrotPx,      setParrotPx]      = useState(0);
+  const [parrotPy,      setParrotPy]      = useState(-1);
+  const [objects,       setObjects]       = useState<FallingObject[]>([]);
   const [floatingTexts, setFloatingTexts] = useState<FloatingText[]>([]);
-  const [hit,           setHit]          = useState(false);
-  const [started,       setStarted]      = useState(false);
-  const [countdown,     setCountdown]    = useState(3);
-  const [shake,         setShake]        = useState(false);
-  const [flash,         setFlash]        = useState(false);
-  const [facing,        setFacing]       = useState<"l" | "r">("r");
-  const [score,         setScore]        = useState(0);
-  const [timeAlive,     setTimeAlive]    = useState(0);
+  const [hit,           setHit]           = useState(false);
+  const [started,       setStarted]       = useState(false);
+  const [countdown,     setCountdown]     = useState(3);
+  const [shake,         setShake]         = useState(false);
+  const [flash,         setFlash]         = useState(false);
+  const [facing,        setFacing]        = useState<"l" | "r">("r");
+  const [score,         setScore]         = useState(0);
+  const [timeAlive,     setTimeAlive]     = useState(0);
 
   const wrapRef      = useRef<HTMLDivElement>(null);
   const canvasRef    = useRef<HTMLDivElement>(null);
   const parrotPxRef  = useRef(0);
+  const parrotPyRef  = useRef(-1);
   const objRef       = useRef<FallingObject[]>([]);
   const deadRef      = useRef(false);
   const rafRef       = useRef(0);
   const lastSpawnRef = useRef(0);
   const startTsRef   = useRef(0);
-  const keysRef      = useRef({ l: false, r: false });
-  const swipeXRef    = useRef<number | null>(null);
+  const keysRef      = useRef({ l: false, r: false, u: false, d: false });
+  const touchRef     = useRef<{ x: number; y: number } | null>(null);
   const scoreRef     = useRef(0);
 
   const canvasW = useRef(0);
@@ -72,6 +77,11 @@ export default function GameScreen({ onGameOver }: Props) {
       const cx = el.clientWidth / 2;
       parrotPxRef.current = cx;
       setParrotPx(cx);
+    }
+    if (parrotPyRef.current < 0) {
+      const iy = el.clientHeight - PARROT_W - 4;
+      parrotPyRef.current = iy;
+      setParrotPy(iy);
     }
   }, []);
 
@@ -111,7 +121,7 @@ export default function GameScreen({ onGameOver }: Props) {
 
   // ── spawn ────────────────────────────────────────────────────────────────
   const spawn = useCallback(() => {
-    const w = canvasW.current || 400;
+    const w  = canvasW.current || 400;
     const px = parrotPxRef.current;
     let x: number;
     let tries = 0;
@@ -122,11 +132,11 @@ export default function GameScreen({ onGameOver }: Props) {
 
     const isBomb = Math.random() < 0.42;
 
-    let emoji = "💣";
+    let emoji  = "💣";
     let points = 0;
     if (!isBomb) {
       const pick = FRUIT_POINTS[Math.floor(Math.random() * FRUIT_POINTS.length)];
-      emoji = pick.emoji;
+      emoji  = pick.emoji;
       points = pick.points;
     }
 
@@ -170,19 +180,26 @@ export default function GameScreen({ onGameOver }: Props) {
       }
 
       const w      = canvasW.current || 400;
+      const h      = canvasH.current || 600;
       const margin = PARROT_W / 2 + 4;
       let px       = parrotPxRef.current;
+      let py       = parrotPyRef.current < 0 ? h - PARROT_W - 4 : parrotPyRef.current;
       let moved    = false;
+
       if (keysRef.current.l) { px -= MOVE_SPEED * dt; moved = true; setFacing("l"); }
       if (keysRef.current.r) { px += MOVE_SPEED * dt; moved = true; setFacing("r"); }
+      if (keysRef.current.u) { py -= MOVE_SPEED * dt; moved = true; }
+      if (keysRef.current.d) { py += MOVE_SPEED * dt; moved = true; }
+
       if (moved) {
         px = Math.max(margin, Math.min(w - margin, px));
+        py = Math.max(margin, Math.min(h - margin, py));
         parrotPxRef.current = px;
+        parrotPyRef.current = py;
         setParrotPx(px);
+        setParrotPy(py);
       }
 
-      const h       = canvasH.current || 600;
-      const playerY = h - PARROT_W - 4;
       const playerR = 22;
 
       const collected: FallingObject[] = [];
@@ -192,18 +209,17 @@ export default function GameScreen({ onGameOver }: Props) {
         .map(o => ({ ...o, y: o.y + o.speed * speedFactor * dt, rot: o.rot + o.rotSpeed * dt }))
         .filter(o => {
           if (o.y >= h + 60) return false;
-          const dx   = o.x - px;
-          const dy   = o.y - playerY;
-          const dist = Math.sqrt(dx * dx + dy * dy);
+          const dx     = o.x - px;
+          const dy     = o.y - py;
+          const dist   = Math.sqrt(dx * dx + dy * dy);
           const overlaps = dist < playerR + o.size * 0.3;
           if (overlaps) {
-            if (o.type === "bomb") { bombHit = true; return true; }
+            if (o.type === "bomb")  { bombHit = true; return true; }
             if (o.type === "fruit") { collected.push(o); return false; }
           }
           return true;
         });
 
-      // process fruit collections — data captured before filter
       if (collected.length > 0) {
         let addedPoints = 0;
         const newFloaters: FloatingText[] = [];
@@ -244,35 +260,50 @@ export default function GameScreen({ onGameOver }: Props) {
     const dn = (e: KeyboardEvent) => {
       if (e.key === "ArrowLeft"  || e.key === "a") keysRef.current.l = true;
       if (e.key === "ArrowRight" || e.key === "d") keysRef.current.r = true;
+      if (e.key === "ArrowUp"    || e.key === "w") keysRef.current.u = true;
+      if (e.key === "ArrowDown"  || e.key === "s") keysRef.current.d = true;
     };
     const up = (e: KeyboardEvent) => {
       if (e.key === "ArrowLeft"  || e.key === "a") keysRef.current.l = false;
       if (e.key === "ArrowRight" || e.key === "d") keysRef.current.r = false;
+      if (e.key === "ArrowUp"    || e.key === "w") keysRef.current.u = false;
+      if (e.key === "ArrowDown"  || e.key === "s") keysRef.current.d = false;
     };
     window.addEventListener("keydown", dn);
     window.addEventListener("keyup",   up);
     return () => { window.removeEventListener("keydown", dn); window.removeEventListener("keyup", up); };
   }, []);
 
-  // ── swipe ────────────────────────────────────────────────────────────────
+  // ── touch drag (free movement) ────────────────────────────────────────────
   const onCanvasTouchStart = (e: React.TouchEvent) => {
-    swipeXRef.current = e.touches[0].clientX;
+    touchRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
   };
   const onCanvasTouchMove = (e: React.TouchEvent) => {
-    if (swipeXRef.current === null) return;
-    const dx = e.touches[0].clientX - swipeXRef.current;
+    if (!touchRef.current) return;
+    const dx = e.touches[0].clientX - touchRef.current.x;
+    const dy = e.touches[0].clientY - touchRef.current.y;
     const w  = canvasW.current || 400;
+    const h  = canvasH.current || 600;
     const margin = PARROT_W / 2 + 4;
+
     let px = parrotPxRef.current + dx * 1.1;
+    let py = parrotPyRef.current + dy * 1.1;
+
     px = Math.max(margin, Math.min(w - margin, px));
+    py = Math.max(margin, Math.min(h - margin, py));
+
     parrotPxRef.current = px;
+    parrotPyRef.current = py;
     setParrotPx(px);
-    if (dx < 0) setFacing("l"); else setFacing("r");
-    swipeXRef.current = e.touches[0].clientX;
+    setParrotPy(py);
+
+    if (dx < 0) setFacing("l"); else if (dx > 0) setFacing("r");
+    touchRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
   };
-  const onCanvasTouchEnd = () => { swipeXRef.current = null; };
+  const onCanvasTouchEnd = () => { touchRef.current = null; };
 
   const graceLbl = started && (performance.now() - startTsRef.current) / 1000 < GRACE;
+  const parrotEmoji = hit ? "💀" : character.emoji;
 
   return (
     <div
@@ -296,7 +327,6 @@ export default function GameScreen({ onGameOver }: Props) {
         zIndex: 30,
         gap: 10,
       }}>
-        {/* Score pill — large */}
         <div style={{
           display: "flex", alignItems: "center", gap: 6,
           background: "rgba(255,220,0,0.13)",
@@ -318,12 +348,14 @@ export default function GameScreen({ onGameOver }: Props) {
           <span style={{ fontSize: "0.7rem", color: "rgba(255,215,0,0.55)", fontWeight: 700, marginLeft: 2 }}>PTS</span>
         </div>
 
-        {/* Center label */}
-        <span style={{ fontWeight: 700, fontSize: "0.78rem", color: graceLbl ? "#80ff80" : "rgba(255,255,255,0.35)", flex: 1, textAlign: "center" }}>
+        <span style={{
+          fontWeight: 700, fontSize: "0.78rem",
+          color: graceLbl ? "#80ff80" : "rgba(255,255,255,0.35)",
+          flex: 1, textAlign: "center",
+        }}>
           {graceLbl ? "🟢 EASY START" : "Dodge 💣  Catch fruits!"}
         </span>
 
-        {/* Timer — compact */}
         <div style={{
           display: "flex", alignItems: "center", gap: 5,
           background: "rgba(255,255,255,0.06)",
@@ -366,13 +398,6 @@ export default function GameScreen({ onGameOver }: Props) {
           background: "linear-gradient(0deg,rgba(80,0,200,0.15),transparent)",
         }} />
 
-        {/* ground line */}
-        <div style={{
-          position: "absolute", bottom: PARROT_W + 6, left: 0, right: 0,
-          height: 1, pointerEvents: "none",
-          background: "linear-gradient(90deg,transparent,rgba(130,80,255,0.25),transparent)",
-        }} />
-
         {/* falling objects */}
         {objects.map(o => (
           <div key={o.id} style={{
@@ -411,24 +436,26 @@ export default function GameScreen({ onGameOver }: Props) {
           </div>
         ))}
 
-        {/* parrot */}
-        <div style={{
-          position: "absolute",
-          left: parrotPx,
-          bottom: 4,
-          transform: `translateX(-50%) scaleX(${facing === "l" ? -1 : 1})`,
-          fontSize: PARROT_W,
-          lineHeight: 1,
-          zIndex: 20,
-          transition: "transform 0.06s ease",
-          filter: hit
-            ? "drop-shadow(0 0 28px red)"
-            : "drop-shadow(0 0 14px rgba(255,220,0,0.8))",
-          willChange: "left",
-          pointerEvents: "none",
-        }}>
-          {hit ? "💀" : "🦜"}
-        </div>
+        {/* parrot — free position */}
+        {parrotPy >= 0 && (
+          <div style={{
+            position: "absolute",
+            left: parrotPx,
+            top: parrotPy,
+            transform: `translate(-50%, -50%) scaleX(${facing === "l" ? -1 : 1})`,
+            fontSize: PARROT_W,
+            lineHeight: 1,
+            zIndex: 20,
+            transition: "transform 0.06s ease",
+            filter: hit
+              ? "drop-shadow(0 0 28px red)"
+              : "drop-shadow(0 0 14px rgba(255,220,0,0.8))",
+            willChange: "left,top",
+            pointerEvents: "none",
+          }}>
+            {parrotEmoji}
+          </div>
+        )}
 
         {/* hit overlay */}
         {hit && (

@@ -1,13 +1,14 @@
 import { useState } from "react";
-import HomeScreen       from "./pages/HomeScreen";
-import QuizScreen       from "./pages/QuizScreen";
-import QuizResultCard   from "./pages/QuizResultCard";
-import GameScreen       from "./pages/GameScreen";
-import NameInputScreen  from "./pages/NameInputScreen";
-import ResultScreen     from "./pages/ResultScreen";
+import HomeScreen        from "./pages/HomeScreen";
+import QuizScreen        from "./pages/QuizScreen";
+import QuizResultCard    from "./pages/QuizResultCard";
+import GameScreen        from "./pages/GameScreen";
+import NameInputScreen   from "./pages/NameInputScreen";
+import ResultScreen      from "./pages/ResultScreen";
+import LeaderboardScreen from "./pages/LeaderboardScreen";
 import { saveToLeaderboard } from "./lib/leaderboard";
 
-type Phase = "home" | "quiz" | "quizResult" | "game" | "nameInput" | "gameResult";
+type Phase = "home" | "quiz" | "quizResult" | "game" | "nameInput" | "gameResult" | "leaderboard";
 
 function getInitialPhase(): Phase {
   return localStorage.getItem("quizCompleted") === "true" ? "home" : "quiz";
@@ -33,13 +34,13 @@ export default function App() {
   }
 
   function handleNameSubmit(name: string) {
-    const finalName = name.trim() || "Player";
+    const finalName = (name ?? "").trim() || "Player";
     setPlayerName(finalName);
     saveToLeaderboard(finalName, rawResult.score, rawResult.timeAlive);
     setPhase("gameResult");
   }
 
-  function handleRetakeQuiz() {
+  function handleQuiz() {
     localStorage.removeItem("quizCompleted");
     setPhase("quiz");
   }
@@ -49,8 +50,8 @@ export default function App() {
       {phase === "home" && (
         <HomeScreen
           onPlay={() => setPhase("game")}
-          onQuiz={() => setPhase("quiz")}
-          onRetakeQuiz={handleRetakeQuiz}
+          onLeaderboard={() => setPhase("leaderboard")}
+          onQuiz={handleQuiz}
         />
       )}
       {phase === "quiz" && (
@@ -81,6 +82,9 @@ export default function App() {
           onGoHome={() => setPhase("home")}
           onPlayAgain={() => setPhase("game")}
         />
+      )}
+      {phase === "leaderboard" && (
+        <LeaderboardScreen onGoHome={() => setPhase("home")} />
       )}
     </div>
   );

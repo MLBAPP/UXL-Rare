@@ -4,11 +4,11 @@ import { initAudio } from "../lib/sounds";
 
 interface Props {
   onPlay: () => void;
+  onLeaderboard: () => void;
   onQuiz: () => void;
-  onRetakeQuiz: () => void;
 }
 
-export default function HomeScreen({ onPlay, onQuiz, onRetakeQuiz }: Props) {
+export default function HomeScreen({ onPlay, onLeaderboard, onQuiz }: Props) {
   const [quizDone, setQuizDone] = useState(false);
 
   useEffect(() => {
@@ -33,58 +33,62 @@ export default function HomeScreen({ onPlay, onQuiz, onRetakeQuiz }: Props) {
           The 10K Squad Experience
         </p>
 
-        {/* CTA Buttons */}
+        {/* Main Menu Buttons */}
         <div className="space-y-3 mb-6">
 
-          {/* Play Game — primary CTA */}
+          {/* Play */}
           <button
-            className="btn-primary w-full text-xl py-4"
+            className="btn-primary w-full text-xl"
             onClick={() => { initAudio(); onPlay(); }}
             style={{ fontSize: "1.2rem", padding: "1rem" }}
           >
-            🎮 Play Game
+            🎮 Play
           </button>
 
-          {/* Take / Retake Quiz */}
-          {!quizDone ? (
-            <button
-              className="w-full rounded-2xl font-black text-lg py-4 transition-all"
-              style={{
-                background: "rgba(255,215,0,0.12)",
-                border: "2px solid rgba(255,215,0,0.5)",
-                color: "#FFD700",
-                boxShadow: "0 0 20px rgba(255,215,0,0.2)",
-                fontSize: "1.1rem",
-                padding: "0.9rem",
-              }}
-              onClick={() => { initAudio(); onQuiz(); }}
-            >
-              🧠 Take the Quiz
+          {/* Leaderboard */}
+          <button
+            className="w-full rounded-2xl font-black text-lg transition-all"
+            style={{
+              background: "rgba(167,139,250,0.12)",
+              border: "2px solid rgba(167,139,250,0.45)",
+              color: "#a78bfa",
+              boxShadow: "0 0 20px rgba(167,139,250,0.15)",
+              fontSize: "1.1rem",
+              padding: "0.9rem",
+              cursor: "pointer",
+            }}
+            onClick={() => { initAudio(); onLeaderboard(); }}
+          >
+            🏆 Leaderboard
+          </button>
+
+          {/* Quiz */}
+          <button
+            className="w-full rounded-2xl font-black text-lg transition-all"
+            style={{
+              background: "rgba(255,215,0,0.10)",
+              border: "2px solid rgba(255,215,0,0.40)",
+              color: "#FFD700",
+              boxShadow: "0 0 20px rgba(255,215,0,0.12)",
+              fontSize: "1.1rem",
+              padding: "0.9rem",
+              cursor: "pointer",
+            }}
+            onClick={() => { initAudio(); onQuiz(); }}
+          >
+            🧠 Quiz
+            {!quizDone && (
               <span style={{
                 display: "block",
-                fontSize: "0.72rem",
+                fontSize: "0.68rem",
                 fontWeight: 600,
-                color: "rgba(255,215,0,0.65)",
+                color: "rgba(255,215,0,0.55)",
                 marginTop: 2,
               }}>
                 Discover your parrot type
               </span>
-            </button>
-          ) : (
-            <button
-              className="w-full rounded-2xl font-bold text-base py-3 transition-all"
-              style={{
-                background: "rgba(255,255,255,0.05)",
-                border: "1px solid rgba(255,255,255,0.15)",
-                color: "rgba(255,255,255,0.6)",
-                fontSize: "1rem",
-                padding: "0.8rem",
-              }}
-              onClick={() => { initAudio(); onRetakeQuiz(); }}
-            >
-              🔁 Retake Quiz
-            </button>
-          )}
+            )}
+          </button>
         </div>
 
         {/* How to play blurb */}
@@ -103,11 +107,11 @@ export default function HomeScreen({ onPlay, onQuiz, onRetakeQuiz }: Props) {
           </div>
           <div className="flex items-start gap-2">
             <span>📱</span>
-            <p className="text-gray-300 text-sm">Swipe left / right to move</p>
+            <p className="text-gray-300 text-sm">Drag anywhere to move freely</p>
           </div>
         </div>
 
-        <p className="text-gray-600 text-xs mt-5">Leaderboard ranked by (Time × 10) + Fruit Pts</p>
+        <p className="text-gray-600 text-xs mt-5">Ranked by (Time × 10) + Fruit Pts</p>
       </div>
     </div>
   );
