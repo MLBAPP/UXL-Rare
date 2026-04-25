@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import StarField from "../components/StarField";
 import { QUESTIONS } from "../data/questions";
 import { playCorrect, playWrong } from "../lib/sounds";
@@ -7,23 +7,49 @@ interface Props {
   onComplete: (correctCount: number) => void;
 }
 
+interface ShuffledQuestion {
+  question: string;
+  emoji: string;
+  shuffledOptions: string[];
+  correctShuffledIndex: number;
+}
+
+function shuffleOnce(): ShuffledQuestion[] {
+  return QUESTIONS.map(q => {
+    const correctText = q.options[q.correctIndex];
+    const shuffled    = [...q.options]
+      .map(opt => ({ opt, sort: Math.random() }))
+      .sort((a, b) => a.sort - b.sort)
+      .map(({ opt }) => opt);
+    return {
+      question:            q.question,
+      emoji:               q.emoji,
+      shuffledOptions:     shuffled,
+      correctShuffledIndex: shuffled.indexOf(correctText),
+    };
+  });
+}
+
 export default function QuizScreen({ onComplete }: Props) {
+  // Shuffle ONCE when the component mounts — never reshuffled
+  const shuffled = useMemo(shuffleOnce, []);
+
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selected,     setSelected]     = useState<number | null>(null);
   const [correctCount, setCorrectCount] = useState(0);
   const [showFeedback, setShowFeedback] = useState(false);
   const [shake,        setShake]        = useState(false);
 
-  const question = QUESTIONS[currentIndex];
-  const progress = ((currentIndex) / QUESTIONS.length) * 100;
+  const q        = shuffled[currentIndex];
+  const progress = (currentIndex / QUESTIONS.length) * 100;
 
   function handleAnswer(idx: number) {
     if (selected !== null) return;
     setSelected(idx);
     setShowFeedback(true);
 
-    const isCorrect = idx === question.correctIndex;
-    let newCorrect = correctCount;
+    const isCorrect = idx === q.correctShuffledIndex;
+    let newCorrect  = correctCount;
 
     if (isCorrect) {
       playCorrect();
@@ -67,21 +93,21 @@ export default function QuizScreen({ onComplete }: Props) {
           <div className="progress-fill" style={{ width: `${progress}%` }} />
         </div>
 
-        {/* Question card */}
+        {/* Question card — keyed by index so it animates on change */}
         <div className="bg-white/5 border border-white/10 rounded-2xl p-6 mb-5 pop-anim" key={currentIndex}>
-          <div className="text-4xl text-center mb-4">{question.emoji}</div>
+          <div className="text-4xl text-center mb-4">{q.emoji}</div>
           <p className="text-white font-bold text-xl text-center leading-snug">
-            {question.question}
+            {q.question}
           </p>
         </div>
 
-        {/* Answer options */}
+        {/* Answer options — fixed A/B/C/D slots, only content changes */}
         <div className="space-y-3 flex-1">
-          {question.options.map((opt, idx) => {
+          {q.shuffledOptions.map((opt, idx) => {
             let cls = "answer-btn";
             if (selected !== null) {
-              if (idx === question.correctIndex) cls += " correct";
-              else if (idx === selected && selected !== question.correctIndex) cls += " wrong";
+              if (idx === q.correctShuffledIndex) cls += " correct";
+              else if (idx === selected)          cls += " wrong";
             }
             return (
               <button
@@ -99,18 +125,18 @@ export default function QuizScreen({ onComplete }: Props) {
           })}
         </div>
 
-        {/* Feedback toast */}
+        {/* Feedback */}
         {showFeedback && selected !== null && (
           <div
             className={`mt-4 text-center py-3 rounded-xl font-black text-lg pop-anim ${
-              selected === question.correctIndex
+              selected === q.correctShuffledIndex
                 ? "bg-green-500/20 text-green-300 border border-green-500/40"
                 : "bg-red-500/20 text-red-300 border border-red-500/40"
             }`}
           >
-            {selected === question.correctIndex
+            {selected === q.correctShuffledIndex
               ? "✅ Correct!"
-              : `❌ It was "${question.options[question.correctIndex]}"`}
+              : `❌ It was "${q.shuffledOptions[q.correctShuffledIndex]}"`}
           </div>
         )}
 

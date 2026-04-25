@@ -5,6 +5,7 @@ import { getLeaderboard, LeaderboardEntry } from "../lib/leaderboard";
 interface Props {
   score: number;
   timeAlive: number;
+  playerName: string;
   onGoHome: () => void;
   onPlayAgain: () => void;
 }
@@ -30,7 +31,7 @@ function getRank(t: number) {
   return RANKS[RANKS.length - 1];
 }
 
-export default function ResultScreen({ score, timeAlive, onGoHome, onPlayAgain }: Props) {
+export default function ResultScreen({ score, timeAlive, playerName, onGoHome, onPlayAgain }: Props) {
   const rank       = getRank(timeAlive);
   const finalScore = Math.round(timeAlive * 10) + score;
   const isLegend   = timeAlive >= 60;
@@ -127,7 +128,8 @@ export default function ResultScreen({ score, timeAlive, onGoHome, onPlayAgain }
 
             {/* Column headers */}
             <div className="flex items-center gap-2 px-3 mb-1">
-              <span style={{ minWidth: 24 }} />
+              <span style={{ minWidth: 22 }} />
+              <span style={{ flex: "0 0 auto", width: 90, fontSize: "0.7rem", fontWeight: 700, color: "rgba(255,255,255,0.3)" }}>NAME</span>
               <div className="flex-1 grid grid-cols-3 gap-1 text-center">
                 <span className="text-gray-600 text-xs font-bold">TIME</span>
                 <span className="text-gray-600 text-xs font-bold">FRUIT</span>
@@ -136,29 +138,38 @@ export default function ResultScreen({ score, timeAlive, onGoHome, onPlayAgain }
             </div>
 
             <div className="space-y-1.5">
-              {leaderboard.slice(0, 8).map((entry, i) => {
-                const isCurrentRun = entry.finalScore === finalScore && entry.timeAlive === timeAlive;
-                const medals = ["🥇", "🥈", "🥉"];
-                const medal  = medals[i] ?? `#${i + 1}`;
+              {leaderboard.slice(0, 10).map((entry, i) => {
+                const isMe     = entry.name.toLowerCase() === playerName.toLowerCase();
+                const medals   = ["🥇", "🥈", "🥉"];
+                const medal    = medals[i] ?? `#${i + 1}`;
                 return (
                   <div key={i} className="flex items-center gap-2 rounded-xl px-3 py-2" style={{
-                    background: isCurrentRun ? "rgba(167,139,250,0.1)" : "rgba(255,255,255,0.03)",
-                    border: isCurrentRun ? "1px solid rgba(167,139,250,0.35)" : "1px solid transparent",
+                    background: isMe ? "rgba(167,139,250,0.12)" : "rgba(255,255,255,0.03)",
+                    border:     isMe ? "1px solid rgba(167,139,250,0.4)" : "1px solid transparent",
                   }}>
-                    <span style={{ fontSize: "1rem", minWidth: 24 }}>{medal}</span>
+                    <span style={{ fontSize: "1rem", minWidth: 22 }}>{medal}</span>
+                    {/* Player name */}
+                    <span style={{
+                      flex: "0 0 auto", maxWidth: 90,
+                      fontSize: "0.78rem", fontWeight: 800,
+                      color: isMe ? "#a78bfa" : "rgba(255,255,255,0.7)",
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    }}>
+                      {entry.name}
+                    </span>
                     <div className="flex-1 grid grid-cols-3 gap-1 text-center">
-                      <span style={{ fontSize: "0.8rem", fontWeight: 700, color: rank.color }}>
+                      <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "rgba(255,255,255,0.5)" }}>
                         {entry.timeAlive.toFixed(1)}s
                       </span>
-                      <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "#FFD700" }}>
+                      <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "#FFD700" }}>
                         🍎{entry.score}
                       </span>
                       <span style={{ fontSize: "0.8rem", fontWeight: 900, color: "#a78bfa" }}>
                         ⭐{entry.finalScore}
                       </span>
                     </div>
-                    {isCurrentRun && (
-                      <span style={{ fontSize: "0.6rem", color: "#a78bfa", fontWeight: 900 }}>NEW</span>
+                    {isMe && (
+                      <span style={{ fontSize: "0.6rem", color: "#a78bfa", fontWeight: 900, flexShrink: 0 }}>YOU</span>
                     )}
                   </div>
                 );
