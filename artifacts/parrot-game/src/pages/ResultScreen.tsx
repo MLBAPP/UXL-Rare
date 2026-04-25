@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import StarField from "../components/StarField";
-import { getLeaderboard, LeaderboardEntry } from "../lib/leaderboard";
+import { getLeaderboard, getPlayerId, LeaderboardEntry } from "../lib/leaderboard";
 
 interface Props {
   score: number;
@@ -35,6 +35,7 @@ export default function ResultScreen({ score, timeAlive, playerName, onGoHome, o
   const rank       = getRank(timeAlive);
   const finalScore = Math.round(timeAlive * 10) + score;
   const isLegend   = timeAlive >= 60;
+  const myId       = getPlayerId();
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
 
   useEffect(() => {
@@ -139,7 +140,7 @@ export default function ResultScreen({ score, timeAlive, playerName, onGoHome, o
 
             <div className="space-y-1.5">
               {leaderboard.slice(0, 10).map((entry, i) => {
-                const isMe     = entry.name.toLowerCase() === playerName.toLowerCase();
+                const isMe     = entry.playerId === myId;
                 const medals   = ["🥇", "🥈", "🥉"];
                 const medal    = medals[i] ?? `#${i + 1}`;
                 return (

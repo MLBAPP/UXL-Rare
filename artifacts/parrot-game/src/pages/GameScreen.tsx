@@ -25,10 +25,32 @@ interface FloatingText {
 
 const HDR_H      = 58;
 const PARROT_W   = 56;
-const MAX_OBJ    = 9;
-const GRACE      = 3;
 const MOVE_SPEED = 420;
-const SPEED_SCALE = 0.70;
+
+function getDifficulty(elapsed: number): { speedFactor: number; spawnMs: number; maxObj: number } {
+  let speedFactor: number;
+  if      (elapsed < 10)  speedFactor = 0.18 + (elapsed / 10) * 0.14;          // 0.18 → 0.32
+  else if (elapsed < 30)  speedFactor = 0.32 + ((elapsed - 10)  / 20) * 0.28;  // 0.32 → 0.60
+  else if (elapsed < 60)  speedFactor = 0.60 + ((elapsed - 30)  / 30) * 0.40;  // 0.60 → 1.00
+  else if (elapsed < 90)  speedFactor = 1.00 + ((elapsed - 60)  / 30) * 0.45;  // 1.00 → 1.45
+  else                    speedFactor = Math.min(2.0, 1.45 + ((elapsed - 90) / 60) * 0.55);
+
+  let spawnMs: number;
+  if      (elapsed < 10)  spawnMs = 2400 - elapsed * 50;           // 2400 → 1900
+  else if (elapsed < 30)  spawnMs = 1900 - (elapsed - 10) * 35;   // 1900 → 1200
+  else if (elapsed < 60)  spawnMs = 1200 - (elapsed - 30) * 16;   // 1200 → 720
+  else if (elapsed < 90)  spawnMs = 720  - (elapsed - 60) * 7.3;  // 720  → 500 (approx)
+  else                    spawnMs = Math.max(320, 500 - (elapsed - 90) * 3);
+
+  let maxObj: number;
+  if      (elapsed < 10)  maxObj = 4;
+  else if (elapsed < 30)  maxObj = 6;
+  else if (elapsed < 60)  maxObj = 9;
+  else if (elapsed < 90)  maxObj = 12;
+  else                    maxObj = 15;
+
+  return { speedFactor, spawnMs, maxObj };
+}
 
 let uid = 0;
 
@@ -167,14 +189,9 @@ export default function GameScreen({ onGameOver }: Props) {
       prev = now;
       const elapsed = (now - startTsRef.current) / 1000;
 
-      const speedFactor =
-        (elapsed < GRACE
-          ? 0.25 + (elapsed / GRACE) * 0.3
-          : 0.55 + (elapsed - GRACE) * 0.028) * SPEED_SCALE;
+      const { speedFactor, spawnMs, maxObj } = getDifficulty(elapsed);
 
-      const phase   = Math.floor(elapsed / 5);
-      const spawnMs = Math.max(700, 2200 - phase * 80);
-      if (now - lastSpawnRef.current > spawnMs && objRef.current.length < MAX_OBJ) {
+      if (now - lastSpawnRef.current > spawnMs && objRef.current.length < maxObj) {
         spawn();
         lastSpawnRef.current = now;
       }
@@ -302,7 +319,7 @@ export default function GameScreen({ onGameOver }: Props) {
   };
   const onCanvasTouchEnd = () => { touchRef.current = null; };
 
-  const graceLbl = started && (performance.now() - startTsRef.current) / 1000 < GRACE;
+  const graceLbl = started && (performance.now() - startTsRef.current) / 1000 < 10;
   const parrotEmoji = hit ? "💀" : character.emoji;
 
   return (
