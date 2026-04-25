@@ -27,27 +27,33 @@ const HDR_H      = 58;
 const PARROT_W   = 56;
 const MOVE_SPEED = 420;
 
+// ── Difficulty curve ──────────────────────────────────────────────────────
+// Phase  0–10s : Moderate start — active immediately, light pressure
+// Phase 10–25s : Noticeable ramp — player must focus
+// Phase 25–50s : Core challenge — high frequency, many objects
+// Phase 50–80s : Chaos — very hard, constant pressure
+// Phase   80s+ : Survival cap — maximum intensity, still fair
 function getDifficulty(elapsed: number): { speedFactor: number; spawnMs: number; maxObj: number } {
   let speedFactor: number;
-  if      (elapsed < 10)  speedFactor = 0.18 + (elapsed / 10) * 0.14;          // 0.18 → 0.32
-  else if (elapsed < 30)  speedFactor = 0.32 + ((elapsed - 10)  / 20) * 0.28;  // 0.32 → 0.60
-  else if (elapsed < 60)  speedFactor = 0.60 + ((elapsed - 30)  / 30) * 0.40;  // 0.60 → 1.00
-  else if (elapsed < 90)  speedFactor = 1.00 + ((elapsed - 60)  / 30) * 0.45;  // 1.00 → 1.45
-  else                    speedFactor = Math.min(2.0, 1.45 + ((elapsed - 90) / 60) * 0.55);
+  if      (elapsed < 10)  speedFactor = 0.40 + (elapsed / 10) * 0.25;           // 0.40 → 0.65
+  else if (elapsed < 25)  speedFactor = 0.65 + ((elapsed - 10) / 15) * 0.35;    // 0.65 → 1.00
+  else if (elapsed < 50)  speedFactor = 1.00 + ((elapsed - 25) / 25) * 0.55;    // 1.00 → 1.55
+  else if (elapsed < 80)  speedFactor = 1.55 + ((elapsed - 50) / 30) * 0.50;    // 1.55 → 2.05
+  else                    speedFactor = Math.min(2.5, 2.05 + ((elapsed - 80) / 60) * 0.45);
 
   let spawnMs: number;
-  if      (elapsed < 10)  spawnMs = 2400 - elapsed * 50;           // 2400 → 1900
-  else if (elapsed < 30)  spawnMs = 1900 - (elapsed - 10) * 35;   // 1900 → 1200
-  else if (elapsed < 60)  spawnMs = 1200 - (elapsed - 30) * 16;   // 1200 → 720
-  else if (elapsed < 90)  spawnMs = 720  - (elapsed - 60) * 7.3;  // 720  → 500 (approx)
-  else                    spawnMs = Math.max(320, 500 - (elapsed - 90) * 3);
+  if      (elapsed < 10)  spawnMs = 1400 - elapsed * 30;           // 1400 → 1100
+  else if (elapsed < 25)  spawnMs = 1100 - (elapsed - 10) * 30;   // 1100 → 650
+  else if (elapsed < 50)  spawnMs = 650  - (elapsed - 25) * 10;   // 650  → 400
+  else if (elapsed < 80)  spawnMs = 400  - (elapsed - 50) * 4;    // 400  → 280
+  else                    spawnMs = Math.max(240, 280 - (elapsed - 80) * 1.5);
 
   let maxObj: number;
-  if      (elapsed < 10)  maxObj = 4;
-  else if (elapsed < 30)  maxObj = 6;
-  else if (elapsed < 60)  maxObj = 9;
-  else if (elapsed < 90)  maxObj = 12;
-  else                    maxObj = 15;
+  if      (elapsed < 10)  maxObj = 5;
+  else if (elapsed < 25)  maxObj = 7;
+  else if (elapsed < 50)  maxObj = 11;
+  else if (elapsed < 80)  maxObj = 14;
+  else                    maxObj = 16;
 
   return { speedFactor, spawnMs, maxObj };
 }
@@ -143,16 +149,34 @@ export default function GameScreen({ onGameOver }: Props) {
 
   // ── spawn ────────────────────────────────────────────────────────────────
   const spawn = useCallback(() => {
-    const w  = canvasW.current || 400;
-    const px = parrotPxRef.current;
-    let x: number;
-    let tries = 0;
-    do {
-      x = Math.random() * (w - 60) + 30;
-      tries++;
-    } while (Math.abs(x - px) < 60 && tries < 10);
+    const w   = canvasW.current || 400;
+    const px  = parrotPxRef.current;
+    const cur = objRef.current;
 
-    const isBomb = Math.random() < 0.42;
+    // Bomb ratio cap: never let bombs exceed 60% of current objects
+    const bombCount = cur.filter(o => o.type === "bomb").length;
+    const bombRatio = cur.length > 0 ? bombCount / cur.length : 0;
+    const forceFruit = bombRatio >= 0.60;
+
+    let isBomb = !forceFruit && Math.random() < 0.42;
+
+    // Ensure at least one guaranteed fruit every 3 spawns
+    const fruitCount = cur.filter(o => o.type === "fruit").length;
+    if (fruitCount === 0 && cur.length >= 3) isBomb = false;
+
+    // Pick x: avoid player position AND avoid clustering with existing bombs
+    let x = 0;
+    let bestScore = -1;
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const candidate = Math.random() * (w - 80) + 40;
+      // Score the candidate: higher = better (more spread out)
+      const distPlayer = Math.abs(candidate - px);
+      const minDistBomb = isBomb
+        ? Math.min(...cur.filter(o => o.type === "bomb").map(o => Math.abs(o.x - candidate)), w)
+        : 0;
+      const score = distPlayer + (isBomb ? minDistBomb * 0.5 : 0);
+      if (score > bestScore) { bestScore = score; x = candidate; }
+    }
 
     let emoji  = "💣";
     let points = 0;
@@ -162,7 +186,7 @@ export default function GameScreen({ onGameOver }: Props) {
       points = pick.points;
     }
 
-    const baseSize = isBomb ? Math.random() * 10 + 30 : Math.random() * 12 + 26;
+    const baseSize = isBomb ? Math.random() * 8 + 28 : Math.random() * 12 + 26;
 
     objRef.current.push({
       id: uid++,

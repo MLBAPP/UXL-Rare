@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import HomeScreen        from "./pages/HomeScreen";
 import QuizScreen        from "./pages/QuizScreen";
 import QuizResultCard    from "./pages/QuizResultCard";
@@ -6,7 +6,7 @@ import GameScreen        from "./pages/GameScreen";
 import NameInputScreen   from "./pages/NameInputScreen";
 import ResultScreen      from "./pages/ResultScreen";
 import LeaderboardScreen from "./pages/LeaderboardScreen";
-import { saveToLeaderboard } from "./lib/leaderboard";
+import { saveToLeaderboard, runOnceReset } from "./lib/leaderboard";
 
 type Phase = "home" | "quiz" | "quizResult" | "game" | "nameInput" | "gameResult" | "leaderboard";
 
@@ -21,6 +21,14 @@ export default function App() {
   const [rawResult,  setRawResult]  = useState<{ score: number; timeAlive: number }>({ score: 0, timeAlive: 0 });
   const [playerName, setPlayerName] = useState("Player");
 
+  // Guard: prevent duplicate leaderboard writes per game session
+  const submitDoneRef = useRef(false);
+
+  // One-time reset for testing — runs once on app mount
+  useEffect(() => {
+    runOnceReset();
+  }, []);
+
   function handleQuizComplete(correctCount: number) {
     localStorage.setItem("quizCompleted", "true");
     setQuizScore(correctCount);
@@ -29,11 +37,15 @@ export default function App() {
   }
 
   function handleGameOver(score: number, timeAlive: number) {
+    submitDoneRef.current = false; // reset guard for this new game
     setRawResult({ score, timeAlive });
     setPhase("nameInput");
   }
 
   function handleNameSubmit(name: string) {
+    if (submitDoneRef.current) return; // prevent double-write
+    submitDoneRef.current = true;
+
     const finalName = (name ?? "").trim() || "Player";
     setPlayerName(finalName);
     saveToLeaderboard(finalName, rawResult.score, rawResult.timeAlive);
