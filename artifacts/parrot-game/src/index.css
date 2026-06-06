@@ -209,3 +209,8 @@
   position: absolute;
   pointer-events: none;
 }
+html, body {
+  height: 100%;
+  overflow-y: auto;
+  margin: 0;
+}
