@@ -1,5 +1,5 @@
 const ODDS_API_KEY = import.meta.env.VITE_ODDS_API_KEY;
-console.log("API Key loaded:", ODDS_API_KEY ? "YES - " + ODDS_API_KEY.slice(0,4) : "NO - MISSING");
+
 export async function fetchTodayPlayers() {
   try {
     const todayET = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
@@ -10,14 +10,12 @@ export async function fetchTodayPlayers() {
       : todayET;
 
     const dateStr = useDate.toISOString().split("T")[0];
-    console.log("Fetching slate for:", dateStr);
 
     const schedRes = await fetch(
       `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${dateStr}&hydrate=lineups,probablePitcher,weather,venue,teams`
     );
     const schedData = await schedRes.json();
     const allGames = schedData.dates?.[0]?.games ?? [];
-
     if (allGames.length === 0) return [];
 
     const [oddsMap, statcastMap, pitcherMap] = await Promise.all([
@@ -174,55 +172,20 @@ export async function fetchTodayPlayers() {
           ));
 
           allPlayers.push({
-            id: playerId,
-            name,
-            team: teamAbbr,
-            opponent,
-            gameLabel,
-            venueName,
-            lineupSpot: index + 1,
-            barrel: barrelRate,
-            hardHit: hardHitRate,
-            exitVelo,
-            xwoba,
-            launchAngle,
-            flyBallRate,
-            pullRate,
-            parkFactor,
-            bullpen: opposingBullpen,
-            platoonEdge,
-            hrOdds: playerOdds,
-            isLive,
-            isFinal,
-            liveScore,
-            avg,
-            slg,
-            obp,
-            hr,
-            ab,
-            windSpeed,
-            windDir,
-            temp,
-            weatherBonus,
-            envScore,
-            archetypes,
-            elimReasons,
-            eliminated: elimReasons.length > 0,
-            ulxScore: score,
-            hrScore,
-            tbScore,
-            rbiScore,
-            hitsScore,
-            opposingPitcher,
-            gameId,
-            status,
-            slateDate: dateStr,
+            id: playerId, name, team: teamAbbr, opponent, gameLabel, venueName,
+            lineupSpot: index + 1, barrel: barrelRate, hardHit: hardHitRate,
+            exitVelo, xwoba, launchAngle, flyBallRate, pullRate, parkFactor,
+            bullpen: opposingBullpen, platoonEdge, hrOdds: playerOdds,
+            isLive, isFinal, liveScore, avg, slg, obp, hr, ab,
+            windSpeed, windDir, temp, weatherBonus, envScore,
+            archetypes, elimReasons, eliminated: elimReasons.length > 0,
+            ulxScore: score, hrScore, tbScore, rbiScore, hitsScore,
+            opposingPitcher, gameId, status, slateDate: dateStr,
           });
         });
       }
     }
 
-    // Sort: players with odds first, then by ULX score
     return allPlayers.sort((a, b) => {
       if (a.hrOdds && !b.hrOdds) return -1;
       if (!a.hrOdds && b.hrOdds) return 1;
@@ -259,7 +222,6 @@ async function fetchSavantCSV() {
         pullRate: parseFloat(cols[idx("pull_percent")]) || null,
       };
     }
-    console.log("Statcast loaded:", Object.keys(map).length);
     return map;
   } catch (err) {
     console.error("Savant error:", err);
@@ -301,13 +263,7 @@ async function fetchHROdds() {
       `https://api.the-odds-api.com/v4/sports/baseball_mlb/odds?apiKey=${ODDS_API_KEY}&regions=us&markets=batter_home_runs&oddsFormat=american`
     );
     const data = await res.json();
-
-    if (!Array.isArray(data)) {
-      console.log("Odds API response:", JSON.stringify(data).slice(0, 300));
-      return {};
-    }
-
-    console.log("Games with odds data:", data.length);
+    if (!Array.isArray(data)) return {};
 
     const map = {};
     for (const game of data) {
@@ -332,6 +288,7 @@ async function fetchHROdds() {
     console.error("Odds API error:", err);
     return {};
   }
+}
 
 function findOdds(fullName, oddsMap) {
   if (!fullName) return null;
@@ -343,10 +300,7 @@ function findOdds(fullName, oddsMap) {
     const keyParts = key.trim().split(" ");
     const keyLast = keyParts.slice(1).join(" ").toLowerCase();
     const keyFirst = keyParts[0]?.toLowerCase();
-    if (
-      keyLast === lastName &&
-      (keyFirst === nameParts[0].toLowerCase() || keyFirst[0] === firstInitial)
-    ) {
+    if (keyLast === lastName && (keyFirst === nameParts[0].toLowerCase() || keyFirst[0] === firstInitial)) {
       return oddsMap[key];
     }
   }
@@ -358,9 +312,7 @@ async function fetchLiveScores(games) {
   for (const game of games) {
     if (game.status?.abstractGameState !== "Live") continue;
     try {
-      const res = await fetch(
-        `https://statsapi.mlb.com/api/v1/game/${game.gamePk}/linescore`
-      );
+      const res = await fetch(`https://statsapi.mlb.com/api/v1/game/${game.gamePk}/linescore`);
       const data = await res.json();
       map[game.gamePk] = {
         inning: data.currentInning ?? "?",
@@ -370,7 +322,7 @@ async function fetchLiveScores(games) {
         awayTeam: game.teams.away.team.abbreviation || "AWAY",
         homeTeam: game.teams.home.team.abbreviation || "HOME",
       };
-    } catch (e) { /* skip */ }
+    } catch (e) { }
   }
   return map;
 }
