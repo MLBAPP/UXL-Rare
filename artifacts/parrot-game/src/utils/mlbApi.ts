@@ -297,29 +297,39 @@ async function fetchPitcherStats() {
 
 async function fetchHROdds() {
   try {
-    const res = await fetch(
-      `https://api.actionnetwork.com/web/v1/games?sport=mlb&date=today`
+    const eventsRes = await fetch(
+      `https://api.the-odds-api.com/v4/sports/baseball_mlb/events?apiKey=${ODDS_API_KEY}`
     );
-    const data = await res.json();
-    const games = data.games ?? [];
-    console.log("ActionNetwork games:", games.length);
+    const events = await eventsRes.json();
+    if (!Array.isArray(events) || events.length === 0) return {};
 
+    console.log("Events found:", events.length);
     const map = {};
-    for (const game of games) {
-      const players = game.markets?.player_props?.batter_home_runs ?? [];
-      for (const player of players) {
-        const name = player.name?.trim();
-        const odds = player.odds?.find((o) =>
-          o.book === "fanduel" || o.book === "draftkings"
-        )?.american;
-        if (name && odds) map[name] = odds;
+
+    for (const event of events) {
+      const res = await fetch(
+        `https://api.the-odds-api.com/v4/sports/baseball_mlb/events/${event.id}/odds?apiKey=${ODDS_API_KEY}&regions=us&markets=batter_home_runs&oddsFormat=american&bookmakers=fanduel,draftkings,betmgm,caesars`
+      );
+      const data = await res.json();
+      for (const bookmaker of data.bookmakers ?? []) {
+        for (const market of bookmaker.markets ?? []) {
+          if (market.key !== "batter_home_runs") continue;
+          for (const outcome of market.outcomes ?? []) {
+            const name = outcome.name?.trim();
+            const price = outcome.price;
+            if (!name) continue;
+            if (!map[name] || Math.abs(price) < Math.abs(map[name])) {
+              map[name] = price;
+            }
+          }
+        }
       }
     }
 
     console.log("Players with odds:", Object.keys(map).length);
     return map;
   } catch (err) {
-    console.error("ActionNetwork error:", err);
+    console.error("Odds error:", err);
     return {};
   }
 }
