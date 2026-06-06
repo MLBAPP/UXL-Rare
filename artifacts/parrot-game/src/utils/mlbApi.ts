@@ -332,7 +332,6 @@ async function fetchHROdds() {
     console.error("Odds error:", err);
     return {};
   }
-}
 
 function findOdds(fullName, oddsMap) {
   if (!fullName) return null;
