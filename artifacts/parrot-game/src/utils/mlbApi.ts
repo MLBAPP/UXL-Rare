@@ -1,5 +1,6 @@
 const ODDS_API_KEY = import.meta.env.VITE_ODDS_API_KEY;
-
+const ODDS_API_KEY = import.meta.env.VITE_ODDS_API_KEY;
+console.log("API Key loaded:", ODDS_API_KEY ? "YES - " + ODDS_API_KEY.slice(0,4) : "NO - MISSING");
 export async function fetchTodayPlayers() {
   try {
     const todayET = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
