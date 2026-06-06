@@ -297,21 +297,21 @@ async function fetchPitcherStats() {
 
 async function fetchHROdds() {
   try {
-    const eventsRes = await fetch(
-      `https://api.the-odds-api.com/v4/sports/baseball_mlb/events?apiKey=${ODDS_API_KEY}`
+    const res = await fetch(
+      `https://api.the-odds-api.com/v4/sports/baseball_mlb/odds?apiKey=${ODDS_API_KEY}&regions=us&markets=batter_home_runs&oddsFormat=american`
     );
-    const events = await eventsRes.json();
-    if (!Array.isArray(events) || events.length === 0) return {};
+    const data = await res.json();
 
-    console.log("Events found:", events.length);
+    if (!Array.isArray(data)) {
+      console.log("Odds API response:", JSON.stringify(data).slice(0, 300));
+      return {};
+    }
+
+    console.log("Games with odds data:", data.length);
+
     const map = {};
-
-    for (const event of events) {
-      const res = await fetch(
-        `https://api.the-odds-api.com/v4/sports/baseball_mlb/events/${event.id}/odds?apiKey=${ODDS_API_KEY}&regions=us&markets=batter_home_runs&oddsFormat=american&bookmakers=fanduel,draftkings,betmgm,caesars`
-      );
-      const data = await res.json();
-      for (const bookmaker of data.bookmakers ?? []) {
+    for (const game of data) {
+      for (const bookmaker of game.bookmakers ?? []) {
         for (const market of bookmaker.markets ?? []) {
           if (market.key !== "batter_home_runs") continue;
           for (const outcome of market.outcomes ?? []) {
@@ -329,7 +329,7 @@ async function fetchHROdds() {
     console.log("Players with odds:", Object.keys(map).length);
     return map;
   } catch (err) {
-    console.error("Odds error:", err);
+    console.error("Odds API error:", err);
     return {};
   }
 
