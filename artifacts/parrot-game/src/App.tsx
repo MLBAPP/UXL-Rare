@@ -648,8 +648,12 @@ export default function App() {
             {rawPlayers.length} players · {[...new Set(rawPlayers.map(p => p.gameId))].length} games
           </div>
           <button onClick={loadPlayers} style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 20, padding: "4px 16px", fontSize: 12, color: COLORS.text, cursor: "pointer" }}>
+            <button onClick={loadPlayers} style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 20, padding: "4px 16px", fontSize: 12, color: COLORS.text, cursor: "pointer" }}>
             🔄 Refresh
           </button>
+          <div style={{background:COLORS.card, borderRadius:20, padding:"4px 16px", fontSize:11, color:COLORS.muted}}>
+            Key: {import.meta.env.VITE_ODDS_API_KEY ? "✅ " + import.meta.env.VITE_ODDS_API_KEY.slice(0,4) : "❌ Missing"}
+          </div>
         </div>
       </div>
 
