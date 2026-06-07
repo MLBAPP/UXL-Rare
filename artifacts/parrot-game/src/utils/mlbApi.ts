@@ -11,7 +11,6 @@ export async function fetchTodayPlayers() {
     const schedData = await schedRes.json();
     let allGames = schedData.dates?.[0]?.games ?? [];
 
-    // If no games today try yesterday
     if (allGames.length === 0) {
       const yesterday = new Date(todayET);
       yesterday.setDate(yesterday.getDate() - 1);
@@ -31,41 +30,25 @@ export async function fetchTodayPlayers() {
       fetchPitcherStats(),
     ]);
 
-    const scoresMap = await fetchLiveScores(allGames);
     const allPlayers = [];
 
     for (const game of allGames) {
       const gameId = game.gamePk;
       const status = game.status?.abstractGameState ?? "Final";
       const isLive = status === "Live";
-      const isFinal = status === "Final";
+      const isFinal = status === "Final" || game.status?.detailedState === "Postponed";
 
-      const awayObj = game.teams?.away?.team ?? {};
-      const homeObj = game.teams?.home?.team ?? {};
+      const awayTeam = game.teams?.away?.team;
+      const homeTeam = game.teams?.home?.team;
 
-      const lineupRes = await fetch(
-        `https://statsapi.mlb.com/api/v1.1/game/${gameId}/feed/live`
-      );
-      const lineupData = await lineupRes.json();
-
-      const finalAway =
-        lineupData.gameData?.teams?.away?.abbreviation ||
-        lineupData.gameData?.teams?.away?.teamCode ||
-        awayObj.abbreviation ||
-        awayObj.name?.split(" ").pop() ||
-        "AWAY";
-
-      const finalHome =
-        lineupData.gameData?.teams?.home?.abbreviation ||
-        lineupData.gameData?.teams?.home?.teamCode ||
-        homeObj.abbreviation ||
-        homeObj.name?.split(" ").pop() ||
-        "HOME";
+      // Get abbreviations from team names
+      const awayAbbr = getTeamAbbr(awayTeam?.id, awayTeam?.name);
+      const homeAbbr = getTeamAbbr(homeTeam?.id, homeTeam?.name);
 
       const venueName = game.venue?.name ?? "Unknown Venue";
       const venueId = game.venue?.id ?? 1;
       const parkFactor = getParkFactor(venueId);
-      const gameLabel = `${finalAway} @ ${finalHome}`;
+      const gameLabel = `${awayAbbr} @ ${homeAbbr}`;
 
       const weather = game.weather ?? {};
       const windSpeed = parseInt(weather.wind?.split(" ")?.[0] ?? "0") || 0;
@@ -74,52 +57,69 @@ export async function fetchTodayPlayers() {
       const weatherBonus = getWeatherBonus(windSpeed, windDir, temp);
       const envScore = getEnvironmentScore(parkFactor, windSpeed, windDir, temp);
 
-      const awayBullpen = getBullpenRating(lineupData, "away");
-      const homeBullpen = getBullpenRating(lineupData, "home");
-      const liveScore = scoresMap[gameId] ?? null;
+      // Use lineups from schedule response directly
+      const homePlayers = game.lineups?.homePlayers ?? [];
+      const awayPlayers = game.lineups?.awayPlayers ?? [];
 
-      const awayPitcherId = lineupData.gameData?.probablePitchers?.away?.id;
-      const homePitcherId = lineupData.gameData?.probablePitchers?.home?.id;
+      // Get probable pitchers
+      const awayPitcherId = game.teams?.away?.probablePitcher?.id;
+      const homePitcherId = game.teams?.home?.probablePitcher?.id;
+      const awayPitcher = pitcherMap[awayPitcherId] ?? null;
+      const homePitcher = pitcherMap[homePitcherId] ?? null;
+
+      // Bullpen ratings — use pitcher ERA as proxy since we don't have live feed
+      const awayBullpen = awayPitcher ? getBullpenFromERA(awayPitcher.era) : "Average";
+      const homeBullpen = homePitcher ? getBullpenFromERA(homePitcher.era) : "Average";
+
+      // Live score
+      let liveScore = null;
+      if (isLive) {
+        try {
+          const lsRes = await fetch(`https://statsapi.mlb.com/api/v1/game/${gameId}/linescore`);
+          const lsData = await lsRes.json();
+          liveScore = {
+            inning: lsData.currentInning ?? "?",
+            inningHalf: lsData.inningHalf ?? "",
+            awayScore: lsData.teams?.away?.runs ?? 0,
+            homeScore: lsData.teams?.home?.runs ?? 0,
+            awayTeam: awayAbbr,
+            homeTeam: homeAbbr,
+          };
+        } catch (e) { }
+      }
 
       for (const side of ["away", "home"]) {
-        const teamAbbr = side === "away" ? finalAway : finalHome;
-        const opponent = side === "away" ? finalHome : finalAway;
+        const lineup = side === "away" ? awayPlayers : homePlayers;
+        const teamAbbr = side === "away" ? awayAbbr : homeAbbr;
+        const opponent = side === "away" ? homeAbbr : awayAbbr;
         const opposingBullpen = side === "away" ? homeBullpen : awayBullpen;
+        const opposingPitcher = side === "away" ? homePitcher : awayPitcher;
         const opposingPitcherId = side === "away" ? homePitcherId : awayPitcherId;
-        const opposingPitcher = pitcherMap[opposingPitcherId] ?? null;
 
-        const lineup = lineupData.liveData?.boxscore?.teams?.[side]?.battingOrder ?? [];
-        const roster = lineupData.liveData?.boxscore?.teams?.[side]?.players ?? {};
-
-        lineup.forEach((playerId, index) => {
-          const p = roster[`ID${playerId}`];
-          if (!p) return;
-
-          const name = p.person?.fullName ?? "Unknown";
-          const hitting = p.seasonStats?.batting ?? {};
-
-          const avg = parseFloat(hitting.avg) || 0.230;
-          const slg = parseFloat(hitting.slg) || 0.380;
-          const obp = parseFloat(hitting.obp) || 0.310;
-          const hr = parseInt(hitting.homeRuns) || 0;
-          const ab = parseInt(hitting.atBats) || 1;
+        lineup.forEach((player, index) => {
+          const playerId = player.id;
+          const name = player.fullName ?? "Unknown";
 
           const sc = statcastMap[playerId] ?? {};
-          const barrelRate = sc.barrel ?? Math.min(20, Math.round((hr / ab) * 170));
-          const hardHitRate = sc.hardHit ?? Math.min(58, Math.round(slg * 65 + obp * 8));
+          const barrelRate = sc.barrel ?? 8;
+          const hardHitRate = sc.hardHit ?? 38;
           const exitVelo = sc.exitVelo ?? null;
           const xwoba = sc.xwoba ?? null;
           const launchAngle = sc.launchAngle ?? null;
           const flyBallRate = sc.flyBallRate ?? null;
           const pullRate = sc.pullRate ?? null;
 
-          const platoonEdge = getPlatoonEdge(p, lineupData, side);
+          // Platoon edge from batting side vs pitcher hand
+          const batSide = player.batSide?.code ?? "R";
+          const pitcherHand = getPitcherHand(opposingPitcherId, pitcherMap);
+          const platoonEdge = batSide !== pitcherHand;
+
           const playerOdds = !isFinal ? findOdds(name, oddsMap) : null;
 
           const archetypes = detectArchetypes({
             barrelRate, hardHitRate, exitVelo, launchAngle,
             flyBallRate, pullRate, platoonEdge,
-            lineupSpot: index + 1, hr, ab,
+            lineupSpot: index + 1, hr: 0, ab: 1,
           });
 
           const elimReasons = getEliminationReasons({
@@ -183,7 +183,7 @@ export async function fetchTodayPlayers() {
             lineupSpot: index + 1, barrel: barrelRate, hardHit: hardHitRate,
             exitVelo, xwoba, launchAngle, flyBallRate, pullRate, parkFactor,
             bullpen: opposingBullpen, platoonEdge, hrOdds: playerOdds,
-            isLive, isFinal, liveScore, avg, slg, obp, hr, ab,
+            isLive, isFinal, liveScore, avg: 0, slg: 0, obp: 0, hr: 0, ab: 1,
             windSpeed, windDir, temp, weatherBonus, envScore,
             archetypes, elimReasons, eliminated: elimReasons.length > 0,
             ulxScore: score, hrScore, tbScore, rbiScore, hitsScore,
@@ -255,6 +255,7 @@ async function fetchPitcherStats() {
         era: parseFloat(s.era) || 4.00,
         barrelAllowed: parseFloat(s.barrelBatted) || 0,
         hardHitAllowed: parseFloat(s.hardHit) || 0,
+        pitchHand: s.pitchHand?.code ?? "R",
       };
     }
     return map;
@@ -314,27 +315,17 @@ function findOdds(fullName, oddsMap) {
   return null;
 }
 
-async function fetchLiveScores(games) {
-  const map = {};
-  for (const game of games) {
-    if (game.status?.abstractGameState !== "Live") continue;
-    try {
-      const res = await fetch(`https://statsapi.mlb.com/api/v1/game/${game.gamePk}/linescore`);
-      const data = await res.json();
-      map[game.gamePk] = {
-        inning: data.currentInning ?? "?",
-        inningHalf: data.inningHalf ?? "",
-        awayScore: data.teams?.away?.runs ?? 0,
-        homeScore: data.teams?.home?.runs ?? 0,
-        awayTeam: game.teams.away.team.abbreviation || "AWAY",
-        homeTeam: game.teams.home.team.abbreviation || "HOME",
-      };
-    } catch (e) { }
-  }
-  return map;
+function getPitcherHand(pitcherId, pitcherMap) {
+  return pitcherMap[pitcherId]?.pitchHand ?? "R";
 }
 
-function detectArchetypes({ barrelRate, hardHitRate, exitVelo, launchAngle, flyBallRate, pullRate, platoonEdge, lineupSpot, hr, ab }) {
+function getBullpenFromERA(era) {
+  if (era >= 4.5) return "Weak";
+  if (era <= 3.5) return "Strong";
+  return "Average";
+}
+
+function detectArchetypes({ barrelRate, hardHitRate, exitVelo, launchAngle, flyBallRate, pullRate, platoonEdge, lineupSpot }) {
   const archetypes = [];
   if (barrelRate >= 10 && hardHitRate >= 45) archetypes.push({ name: "Barrel Guy", color: "#f97316", icon: "🛢️" });
   if (platoonEdge) archetypes.push({ name: "Smasher", color: "#a855f7", icon: "💥" });
@@ -344,7 +335,7 @@ function detectArchetypes({ barrelRate, hardHitRate, exitVelo, launchAngle, flyB
   return archetypes;
 }
 
-function getEliminationReasons({ hrOdds, hardHitRate, lineupSpot, barrelRate, envScore, bullpen }) {
+function getEliminationReasons({ hrOdds, hardHitRate, lineupSpot, barrelRate, envScore }) {
   const reasons = [];
   if (hardHitRate !== null && hardHitRate < 30) reasons.push("Weak hard hit%");
   if (lineupSpot > 7) reasons.push("Too low in lineup");
@@ -379,35 +370,23 @@ function getWeatherBonus(windSpeed, windDir, temp) {
   return Math.round(bonus);
 }
 
-function getBullpenRating(lineupData, side) {
-  const pitchers = lineupData.liveData?.boxscore?.teams?.[side]?.bullpen ?? [];
-  if (pitchers.length === 0) return "Average";
-  const eras = pitchers.map((id) => {
-    const p = lineupData.liveData?.boxscore?.teams?.[side]?.players?.[`ID${id}`];
-    return parseFloat(p?.seasonStats?.pitching?.era ?? "4.00");
-  }).filter((e) => !isNaN(e));
-  if (eras.length === 0) return "Average";
-  const avg = eras.reduce((a, b) => a + b, 0) / eras.length;
-  if (avg >= 4.5) return "Weak";
-  if (avg <= 3.5) return "Strong";
-  return "Average";
-}
-
-function getPlatoonEdge(player, lineupData, side) {
-  const batSide = player.person?.batSide?.code ?? "R";
-  const oppSide = side === "away" ? "home" : "away";
-  const probPitcherId = lineupData.gameData?.probablePitchers?.[oppSide]?.id;
-  if (!probPitcherId) return false;
-  const pitcher = lineupData.liveData?.boxscore?.teams?.[oppSide]?.players?.[`ID${probPitcherId}`];
-  const pitchHand = pitcher?.person?.pitchHand?.code ?? "R";
-  return batSide !== pitchHand;
+function getTeamAbbr(teamId, teamName) {
+  const abbrs = {
+    108: "LAA", 109: "ARI", 110: "BAL", 111: "BOS", 112: "CHC",
+    113: "CIN", 114: "CLE", 115: "COL", 116: "DET", 117: "HOU",
+    118: "KC",  119: "LAD", 120: "WSH", 121: "NYM", 133: "ATH",
+    134: "PIT", 135: "SD",  136: "SEA", 137: "SF",  138: "STL",
+    139: "TB",  140: "TEX", 141: "TOR", 142: "MIN", 143: "PHI",
+    144: "ATL", 145: "CWS", 146: "MIA", 147: "NYY", 158: "MIL",
+  };
+  return abbrs[teamId] ?? teamName?.split(" ").pop() ?? "???";
 }
 
 function getParkFactor(venueId) {
   const factors = {
     15: 1.12, 4: 1.08, 3289: 1.08, 680: 1.06,
-    2392: 1.05, 2681: 1.03, 239: 1.00, 22: 0.98,
-    2602: 0.97, 2889: 0.95, 14: 0.94,
+    2392: 1.05, 2681: 1.03, 239: 1.00, 3313: 1.00,
+    22: 0.98, 2602: 0.97, 2889: 0.95, 14: 0.94,
   };
   return factors[venueId] ?? 1.00;
 }
