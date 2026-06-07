@@ -10,6 +10,8 @@ export async function fetchTodayPlayers() {
     );
     const schedData = await schedRes.json();
     let allGames = schedData.dates?.[0]?.games ?? [];
+console.log("SCHEDULE DATA", schedData);
+console.log("GAMES FOUND", schedData.dates?.[0]?.games?.length);
 
     if (allGames.length === 0) {
       const yesterday = new Date(todayET);
