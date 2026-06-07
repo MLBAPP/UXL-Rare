@@ -3,19 +3,26 @@ const ODDS_API_KEY = import.meta.env.VITE_ODDS_API_KEY;
 export async function fetchTodayPlayers() {
   try {
     const todayET = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
-    const hour = todayET.getHours();
-
-    const useDate = hour < 10
-      ? new Date(new Date(todayET).setDate(todayET.getDate() - 1))
-      : todayET;
-
-    const dateStr = useDate.toISOString().split("T")[0];
+    const dateStr = todayET.toISOString().split("T")[0];
 
     const schedRes = await fetch(
       `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${dateStr}&hydrate=lineups,probablePitcher,weather,venue,teams`
     );
     const schedData = await schedRes.json();
-    const allGames = schedData.dates?.[0]?.games ?? [];
+    let allGames = schedData.dates?.[0]?.games ?? [];
+
+    // If no games today try yesterday
+    if (allGames.length === 0) {
+      const yesterday = new Date(todayET);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yDateStr = yesterday.toISOString().split("T")[0];
+      const yRes = await fetch(
+        `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${yDateStr}&hydrate=lineups,probablePitcher,weather,venue,teams`
+      );
+      const yData = await yRes.json();
+      allGames = yData.dates?.[0]?.games ?? [];
+    }
+
     if (allGames.length === 0) return [];
 
     const [oddsMap, statcastMap, pitcherMap] = await Promise.all([
