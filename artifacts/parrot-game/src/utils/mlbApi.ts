@@ -9,9 +9,9 @@ export async function fetchTodayPlayers() {
       `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${dateStr}&hydrate=lineups,probablePitcher,weather,venue,teams`
     );
     const schedData = await schedRes.json();
-    let allGames = schedData.dates?.[0]?.games ?? [];
 console.log("SCHEDULE DATA", schedData);
 console.log("GAMES FOUND", schedData.dates?.[0]?.games?.length);
+    let allGames = schedData.dates?.[0]?.games ?? [];
 
     if (allGames.length === 0) {
       const yesterday = new Date(todayET);
