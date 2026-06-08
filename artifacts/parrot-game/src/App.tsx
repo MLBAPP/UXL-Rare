@@ -41,10 +41,10 @@ function getGrade(ulxScore) {
 function getOutcome(prediction, result) {
   if (!result) return null;
   const market = prediction.bestMarket?.toLowerCase() ?? "";
-  if (market.includes("hr") && result.hr >= 1) return "SUCCESS";
-  if (market.includes("hit") && result.hits >= 1) return "SUCCESS";
-  if (market.includes("rbi") && result.rbi >= 1) return "SUCCESS";
-  if (market.includes("tb") && result.tb >= 2) return "SUCCESS";
+  if (market.includes("hr") && Number(result.hr) >= 1) return "SUCCESS";
+  if (market.includes("hit") && Number(result.hits) >= 1) return "SUCCESS";
+  if (market.includes("rbi") && Number(result.rbi) >= 1) return "SUCCESS";
+  if (market.includes("tb") && Number(result.tb) >= 2) return "SUCCESS";
   return "MISS";
 }
 
@@ -52,7 +52,7 @@ function getLockStatus() {
   const et = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
   const total = et.getHours() * 60 + et.getMinutes();
   const open = 9 * 60;
-  const close = 17 * 60; // 5pm instead of 12pm
+  const close = 22 * 60;
   if (total >= open && total < close) return { status: "open" };
   if (total < open) {
     const left = open - total;
@@ -61,10 +61,11 @@ function getLockStatus() {
   return { status: "closed" };
 }
 
-function getYesterdayLabel() {
-  const et = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
-  et.setDate(et.getDate() - 1);
-  return et.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+function formatDateLabel(dateStr) {
+  if (!dateStr) return "";
+  return new Date(dateStr + "T12:00:00").toLocaleDateString("en-US", {
+    month: "long", day: "numeric", year: "numeric"
+  });
 }
 
 const ITEMS_PER_PAGE = 20;
@@ -150,10 +151,29 @@ export default function App() {
     setPool([...pool, player]);
   }
   function removeFromPool(id) { setPool(pool.filter((p) => p.id !== id)); }
+  function deleteSnapshot(date) {
+    setSnapshots(snapshots.filter(s => s.date !== date));
+    if (activeSnapshot === date) setActiveSnapshot(null);
+  }
 
   function lockSlate() {
-    const dateLabel = getYesterdayLabel();
-    if (snapshots.some((s) => s.date === dateLabel)) { alert(`${dateLabel} already locked.`); return; }
+    if (scoredPlayers.length === 0) {
+      alert("No players loaded.");
+      return;
+    }
+    const hasLive = scoredPlayers.some(p => p.isLive);
+    if (hasLive) {
+      alert("Games still in progress. Wait until all games finish.");
+      return;
+    }
+    // Use actual slate date from players
+    const slateDate = scoredPlayers[0]?.slateDate;
+    const dateLabel = slateDate ? formatDateLabel(slateDate) : new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+
+    if (snapshots.some((s) => s.date === dateLabel)) {
+      alert(`${dateLabel} already locked.`);
+      return;
+    }
     const allRanked = scoredPlayers.map((p, i) => ({
       id: p.id, rank: i + 1, name: p.name, team: p.team,
       gameLabel: p.gameLabel ?? "", ulxScore: p.ulxScore,
@@ -260,7 +280,7 @@ export default function App() {
             <Badge color={COLORS.gold}>🎯 {bestMarket.name}</Badge>
             <Badge color={COLORS.green}>⚡ {confidence}</Badge>
             {!player.isLive && player.hrOdds && (
-              <Badge color={COLORS.muted}>HR {player.hrOdds > 0 ? `+${player.hrOdds}` : player.hrOdds}</Badge>
+              <Badge color={COLORS.muted}>HR +{player.hrOdds}</Badge>
             )}
             {player.isLive && liveLabel && <Badge color={COLORS.red}>{liveLabel}</Badge>}
             <Badge color={env.color}>{env.label}</Badge>
@@ -303,12 +323,12 @@ export default function App() {
               {[
                 ["Barrel Rate", `${player.barrel}%`, player.barrel >= 10 ? "🟢 Elite" : player.barrel >= 6 ? "🟡 Good" : "⚪ Below Avg"],
                 ["Hard Hit%", `${player.hardHit}%`, player.hardHit >= 50 ? "🟢 Elite" : player.hardHit >= 39 ? "🟡 Above Avg" : "⚪ Below Avg"],
-                ["Exit Velo", player.exitVelo ? `${player.exitVelo} mph` : "N/A", player.exitVelo >= 92 ? "🟢 Elite" : player.exitVelo >= 88 ? "🟡 Good" : "⚪ Below Avg"],
-                ["Launch Angle", player.launchAngle ? `${player.launchAngle}°` : "N/A", player.launchAngle >= 10 && player.launchAngle <= 30 ? "🟢 HR Zone" : "⚪ Outside"],
-                ["Fly Ball%", player.flyBallRate ? `${player.flyBallRate}%` : "N/A", player.flyBallRate >= 35 ? "🟢 High" : "⚪ Low"],
-                ["Pull%", player.pullRate ? `${player.pullRate}%` : "N/A", player.pullRate >= 40 ? "🟢 Pull Power" : "⚪ Neutral"],
-                ["xwOBA", player.xwoba ? player.xwoba.toFixed(3) : "N/A", player.xwoba >= 0.370 ? "🟢 Elite" : player.xwoba >= 0.320 ? "🟡 Above Avg" : "⚪ Below Avg"],
-                ["Park Factor", player.parkFactor ? player.parkFactor.toFixed(2) : "N/A", player.parkFactor >= 1.05 ? "🟢 Friendly" : player.parkFactor <= 0.95 ? "🔴 Fade" : "⚪ Neutral"],
+                ["Exit Velo", player.exitVelo ? `${player.exitVelo} mph` : "N/A", (player.exitVelo ?? 0) >= 92 ? "🟢 Elite" : (player.exitVelo ?? 0) >= 88 ? "🟡 Good" : "⚪ Below Avg"],
+                ["Launch Angle", player.launchAngle ? `${player.launchAngle}°` : "N/A", (player.launchAngle ?? 0) >= 10 && (player.launchAngle ?? 0) <= 30 ? "🟢 HR Zone" : "⚪ Outside"],
+                ["Fly Ball%", player.flyBallRate ? `${player.flyBallRate}%` : "N/A", (player.flyBallRate ?? 0) >= 35 ? "🟢 High" : "⚪ Low"],
+                ["Pull%", player.pullRate ? `${player.pullRate}%` : "N/A", (player.pullRate ?? 0) >= 40 ? "🟢 Pull Power" : "⚪ Neutral"],
+                ["xwOBA", player.xwoba ? player.xwoba.toFixed(3) : "N/A", (player.xwoba ?? 0) >= 0.370 ? "🟢 Elite" : (player.xwoba ?? 0) >= 0.320 ? "🟡 Above Avg" : "⚪ Below Avg"],
+                ["Park Factor", player.parkFactor ? player.parkFactor.toFixed(2) : "N/A", (player.parkFactor ?? 1) >= 1.05 ? "🟢 Friendly" : (player.parkFactor ?? 1) <= 0.95 ? "🔴 Fade" : "⚪ Neutral"],
                 ["Lineup Spot", `#${player.lineupSpot}`, player.lineupSpot <= 2 ? "🟢 Top Order" : player.lineupSpot <= 4 ? "🟡 Middle" : "⚪ Lower"],
                 ["Bullpen", player.bullpen, player.bullpen === "Weak" ? "🟢 Favorable" : player.bullpen === "Average" ? "🟡 Average" : "🔴 Strong"],
                 ["Platoon", player.platoonEdge ? "Advantage" : "None", player.platoonEdge ? "🟢 Edge" : "⚪ Neutral"],
@@ -317,7 +337,7 @@ export default function App() {
                 ["AVG", player.avg ? player.avg.toFixed(3) : "N/A", "Season"],
                 ["SLG", player.slg ? player.slg.toFixed(3) : "N/A", "Season"],
                 ["HR", player.hr ?? "N/A", "Season Total"],
-                ["Temp", player.temp ? `${player.temp}°F` : "N/A", player.temp >= 60 && player.temp <= 85 ? "🟢 Ideal" : player.temp < 50 ? "🔴 Cold" : "⚪ Hot"],
+                ["Temp", player.temp ? `${player.temp}°F` : "N/A", (player.temp ?? 72) >= 60 && (player.temp ?? 72) <= 85 ? "🟢 Ideal" : (player.temp ?? 72) < 50 ? "🔴 Cold" : "⚪ Hot"],
               ].map(([label, val, note]) => (
                 <div key={label}>
                   <div style={{ fontSize: 10, color: COLORS.muted, letterSpacing: 0.5 }}>{label}</div>
@@ -350,27 +370,45 @@ export default function App() {
   }
 
   function renderLockButton() {
-    const dateLabel = getYesterdayLabel();
-    const alreadyLocked = snapshots.some((s) => s.date === dateLabel);
+    const slateDate = scoredPlayers[0]?.slateDate;
+    const dateLabel = slateDate ? formatDateLabel(slateDate) : "";
+    const alreadyLocked = dateLabel && snapshots.some((s) => s.date === dateLabel);
+    const hasLive = scoredPlayers.some(p => p.isLive);
+
+    if (!dateLabel || scoredPlayers.length === 0) return (
+      <div style={{ background: COLORS.cardInner, borderRadius: 12, padding: "12px 16px", marginBottom: 16, textAlign: "center", color: COLORS.muted, fontSize: 13 }}>
+        ⚾ Load players to enable slate lock
+      </div>
+    );
+
     if (alreadyLocked) return (
       <div style={{ background: COLORS.cardInner, borderRadius: 12, padding: "12px 16px", marginBottom: 16, textAlign: "center", color: COLORS.green, fontWeight: 700 }}>
         ✅ {dateLabel} Locked
       </div>
     );
+
+    if (hasLive) return (
+      <div style={{ background: COLORS.cardInner, borderRadius: 12, padding: "12px 16px", marginBottom: 16, textAlign: "center", color: COLORS.gold, fontSize: 13 }}>
+        🔴 Games in progress — lock after all games finish
+      </div>
+    );
+
     if (lockStatus.status === "open") return (
       <button onClick={lockSlate} style={{ background: COLORS.green, color: "#000", border: "none", borderRadius: 12, padding: "14px 0", fontWeight: 800, fontSize: 14, cursor: "pointer", width: "100%", marginBottom: 16, letterSpacing: 1 }}>
         🔒 Lock {dateLabel}'s Slate
       </button>
     );
+
     if (lockStatus.status === "pending") return (
       <div style={{ background: COLORS.cardInner, borderRadius: 12, padding: "12px 16px", marginBottom: 16, textAlign: "center" }}>
         <div style={{ color: COLORS.muted, fontSize: 12 }}>Slate lock opens at 9am ET</div>
         <div style={{ color: COLORS.gold, fontWeight: 700, fontSize: 16, marginTop: 4 }}>⏳ {lockStatus.countdown}</div>
       </div>
     );
+
     return (
       <div style={{ background: COLORS.cardInner, borderRadius: 12, padding: "12px 16px", marginBottom: 16, textAlign: "center", color: COLORS.muted, fontSize: 13 }}>
-        🔒 Window closed — opens 9am ET · closes 5pm ET
+        🔒 Window closed — opens 9am ET
       </div>
     );
   }
@@ -380,20 +418,29 @@ export default function App() {
       <div style={{ textAlign: "center", color: COLORS.muted, padding: 40 }}>
         <div style={{ fontSize: 32, marginBottom: 12 }}>📋</div>
         <div>No slates locked yet.</div>
-        <div style={{ fontSize: 12, marginTop: 6 }}>Lock a slate between 9am–12pm ET on the Dashboard.</div>
+        <div style={{ fontSize: 12, marginTop: 6 }}>Lock a slate from the Dashboard after games finish.</div>
       </div>
     );
     const snap = snapshots.find((s) => s.date === activeSnapshot) ?? snapshots[0];
     const top10 = snap.players.slice(0, 10);
     return (
       <>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20 }}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 20 }}>
           {snapshots.map((s) => (
-            <button key={s.date} onClick={() => setActiveSnapshot(s.date)} style={{
-              background: (activeSnapshot ?? snapshots[0].date) === s.date ? COLORS.gold : COLORS.card,
-              color: (activeSnapshot ?? snapshots[0].date) === s.date ? "#000" : COLORS.muted,
-              border: "none", borderRadius: 10, padding: "8px 14px", fontWeight: 700, fontSize: 12, cursor: "pointer",
-            }}>{s.date}</button>
+            <div key={s.date} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <button onClick={() => setActiveSnapshot(s.date)} style={{
+                background: (activeSnapshot ?? snapshots[0].date) === s.date ? COLORS.gold : COLORS.card,
+                color: (activeSnapshot ?? snapshots[0].date) === s.date ? "#000" : COLORS.muted,
+                border: "none", borderRadius: 10, padding: "8px 14px", fontWeight: 700, fontSize: 12, cursor: "pointer",
+              }}>{s.date}</button>
+              <button onClick={() => {
+                if (window.confirm(`Delete ${s.date}?`)) deleteSnapshot(s.date);
+              }} style={{
+                background: COLORS.red + "22", color: COLORS.red,
+                border: `1px solid ${COLORS.red}44`, borderRadius: 8,
+                padding: "6px 8px", fontWeight: 700, fontSize: 11, cursor: "pointer",
+              }}>✕</button>
+            </div>
           ))}
         </div>
         <div style={{ color: COLORS.muted, fontSize: 12, marginBottom: 16 }}>Top 10 from {snap.date}</div>
@@ -530,12 +577,9 @@ export default function App() {
   ];
 
   return (
-    <div style={{ 
-      background: COLORS.bg, 
-      minHeight: "100vh", 
-      color: COLORS.text, 
-      fontFamily: "'Arial', sans-serif",
-      overflowY: "auto"
+    <div style={{
+      background: COLORS.bg, minHeight: "100vh", color: COLORS.text,
+      fontFamily: "'Arial', sans-serif", overflowY: "auto"
     }}>
       <div style={{ textAlign: "center", padding: "20px 16px 0" }}>
         <div style={{ fontSize: 11, color: COLORS.muted, letterSpacing: 3, marginBottom: 4 }}>UNDERGROUND LINE EXCHANGE</div>
@@ -554,6 +598,7 @@ export default function App() {
         </div>
       </div>
 
+      {/* Sticky tabs */}
       <div style={{ position: "sticky", top: 0, zIndex: 100, background: COLORS.bg, borderBottom: `1px solid ${COLORS.border}`, padding: "10px 16px", overflowX: "auto", whiteSpace: "nowrap", display: "flex", gap: 6 }}>
         {tabs.map((t) => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
@@ -566,15 +611,102 @@ export default function App() {
       </div>
 
       <div style={{ padding: "16px 16px 40px", maxWidth: 600, margin: "0 auto" }}>
+
+        {/* Loading */}
         {loading && <div style={{ color: COLORS.gold, textAlign: "center", padding: 40 }}>⏳ Loading players...</div>}
-        {!loading && rawPlayers.length === 0 && (
+
+        {/* No players — but still show Results and Stats tabs */}
+        {!loading && rawPlayers.length === 0 && tab === "dashboard" && (
           <div style={{ textAlign: "center", color: COLORS.muted, padding: 40 }}>
             <div style={{ fontSize: 32, marginBottom: 12 }}>⚾</div>
-            <div style={{ color: COLORS.text, fontWeight: 700 }}>No players available</div>
+            <div style={{ color: COLORS.text, fontWeight: 700 }}>No players available yet</div>
             <div style={{ fontSize: 12, marginTop: 6 }}>Lineups post 4–6 hours before first pitch</div>
+            <div style={{ fontSize: 12, marginTop: 4, color: COLORS.muted }}>Check back later or hit Refresh</div>
           </div>
         )}
 
+        {!loading && rawPlayers.length === 0 && tab === "research" && (
+          <div style={{ textAlign: "center", color: COLORS.muted, padding: 40 }}>
+            <div style={{ fontSize: 32, marginBottom: 12 }}>🔍</div>
+            <div>No players loaded yet.</div>
+          </div>
+        )}
+
+        {!loading && rawPlayers.length === 0 && tab === "tiers" && (
+          <div style={{ textAlign: "center", color: COLORS.muted, padding: 40 }}>
+            <div style={{ fontSize: 32, marginBottom: 12 }}>🎯</div>
+            <div>No players loaded yet.</div>
+          </div>
+        )}
+
+        {/* Results and Stats always visible */}
+        {!loading && tab === "results" && renderResultsTab()}
+        {!loading && tab === "performance" && renderPerformanceTab()}
+
+        {/* Pool and Stacks always visible */}
+        {!loading && tab === "pool" && (
+          sortedPool.length === 0 ? (
+            <div style={{ textAlign: "center", color: COLORS.muted, padding: 40 }}>
+              <div style={{ fontSize: 32, marginBottom: 12 }}>💼</div>
+              <div>No players in pool yet.</div>
+            </div>
+          ) : sortedPool.map((p) => renderPlayerCard(p))
+        )}
+
+        {!loading && tab === "stacks" && (
+          <>
+            <div style={{ marginBottom: 20 }}>
+              <h2 style={{ margin: 0, color: COLORS.gold }}>🔗 TEAM STACKS</h2>
+              <div style={{ color: COLORS.muted, fontSize: 12, marginTop: 4 }}>Add 2+ players from the same team to your pool.</div>
+            </div>
+            {stacks.length === 0 ? (
+              <div style={{ textAlign: "center", color: COLORS.muted, padding: 40 }}>
+                <div style={{ fontSize: 32, marginBottom: 12 }}>🔗</div>
+                <div>No stacks yet.</div>
+              </div>
+            ) : stacks.map((stack, i) => {
+              const score = stack.correlationScore;
+              const scoreColor = score >= 75 ? COLORS.green : score >= 55 ? COLORS.gold : COLORS.red;
+              return (
+                <div key={stack.team} style={{ background: COLORS.card, borderRadius: 16, marginBottom: 14, border: `1.5px solid ${scoreColor}44`, overflow: "hidden" }}>
+                  <div style={{ height: 3, background: scoreColor }} />
+                  <div style={{ padding: 16 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div>
+                        <span style={{ color: COLORS.muted, fontSize: 13, marginRight: 6 }}>#{i + 1}</span>
+                        <strong style={{ fontSize: 18, color: COLORS.text }}>{stack.team}</strong>
+                        <span style={{ color: COLORS.muted, fontSize: 12, marginLeft: 8 }}>{stack.players.length}-man stack</span>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontSize: 26, fontWeight: 900, color: scoreColor }}>{score}</div>
+                        <div style={{ fontSize: 10, color: COLORS.muted }}>CORR. SCORE</div>
+                      </div>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 6, marginTop: 14 }}>
+                      <StatBox label="AVG ULX" value={stack.avgULX} color={COLORS.green} />
+                      <StatBox label="PARK" value={`+${stack.parkBonus}`} color={COLORS.blue} />
+                      <StatBox label="BULLPEN" value={`+${stack.bullpenBonus}`} color={COLORS.red} />
+                      <StatBox label="PLATOON" value={`+${stack.platoonBonus}`} color={COLORS.purple} />
+                    </div>
+                    <div style={{ marginTop: 14 }}>
+                      {stack.players.map((p) => (
+                        <div key={p.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${COLORS.border}` }}>
+                          <span style={{ fontWeight: 700 }}>{p.name}</span>
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <Badge color={COLORS.muted}>#{p.lineupSpot}</Badge>
+                            <Badge color={COLORS.green}>{p.ulxScore}</Badge>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </>
+        )}
+
+        {/* Main content only when players loaded */}
         {!loading && rawPlayers.length > 0 && (
           <>
             {tab === "dashboard" && (
@@ -635,71 +767,6 @@ export default function App() {
                 {(tierPage === 0 ? scoredPlayers : tierPage === 1 ? safePlayers : tierPage === 2 ? valuePlayers : nukePlayers).map((p, i) => renderPlayerCard(p, i + 1))}
               </>
             )}
-
-            {tab === "pool" && (
-              sortedPool.length === 0 ? (
-                <div style={{ textAlign: "center", color: COLORS.muted, padding: 40 }}>
-                  <div style={{ fontSize: 32, marginBottom: 12 }}>💼</div>
-                  <div>No players in pool yet.</div>
-                </div>
-              ) : sortedPool.map((p) => renderPlayerCard(p))
-            )}
-
-            {tab === "stacks" && (
-              <>
-                <div style={{ marginBottom: 20 }}>
-                  <h2 style={{ margin: 0, color: COLORS.gold }}>🔗 TEAM STACKS</h2>
-                  <div style={{ color: COLORS.muted, fontSize: 12, marginTop: 4 }}>Add 2+ players from the same team to your pool.</div>
-                </div>
-                {stacks.length === 0 ? (
-                  <div style={{ textAlign: "center", color: COLORS.muted, padding: 40 }}>
-                    <div style={{ fontSize: 32, marginBottom: 12 }}>🔗</div>
-                    <div>No stacks yet.</div>
-                  </div>
-                ) : stacks.map((stack, i) => {
-                  const score = stack.correlationScore;
-                  const scoreColor = score >= 75 ? COLORS.green : score >= 55 ? COLORS.gold : COLORS.red;
-                  return (
-                    <div key={stack.team} style={{ background: COLORS.card, borderRadius: 16, marginBottom: 14, border: `1.5px solid ${scoreColor}44`, overflow: "hidden" }}>
-                      <div style={{ height: 3, background: scoreColor }} />
-                      <div style={{ padding: 16 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <div>
-                            <span style={{ color: COLORS.muted, fontSize: 13, marginRight: 6 }}>#{i + 1}</span>
-                            <strong style={{ fontSize: 18, color: COLORS.text }}>{stack.team}</strong>
-                            <span style={{ color: COLORS.muted, fontSize: 12, marginLeft: 8 }}>{stack.players.length}-man stack</span>
-                          </div>
-                          <div style={{ textAlign: "right" }}>
-                            <div style={{ fontSize: 26, fontWeight: 900, color: scoreColor }}>{score}</div>
-                            <div style={{ fontSize: 10, color: COLORS.muted }}>CORR. SCORE</div>
-                          </div>
-                        </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 6, marginTop: 14 }}>
-                          <StatBox label="AVG ULX" value={stack.avgULX} color={COLORS.green} />
-                          <StatBox label="PARK" value={`+${stack.parkBonus}`} color={COLORS.blue} />
-                          <StatBox label="BULLPEN" value={`+${stack.bullpenBonus}`} color={COLORS.red} />
-                          <StatBox label="PLATOON" value={`+${stack.platoonBonus}`} color={COLORS.purple} />
-                        </div>
-                        <div style={{ marginTop: 14 }}>
-                          {stack.players.map((p) => (
-                            <div key={p.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${COLORS.border}` }}>
-                              <span style={{ fontWeight: 700 }}>{p.name}</span>
-                              <div style={{ display: "flex", gap: 8 }}>
-                                <Badge color={COLORS.muted}>#{p.lineupSpot}</Badge>
-                                <Badge color={COLORS.green}>{p.ulxScore}</Badge>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </>
-            )}
-
-            {tab === "results" && renderResultsTab()}
-            {tab === "performance" && renderPerformanceTab()}
           </>
         )}
       </div>
