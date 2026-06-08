@@ -52,7 +52,7 @@ function getLockStatus() {
   const et = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
   const total = et.getHours() * 60 + et.getMinutes();
   const open = 9 * 60;
-  const close = 15 * 60; // 3pm instead of 12pm
+  const close = 17 * 60; // 5pm instead of 12pm
   if (total >= open && total < close) return { status: "open" };
   if (total < open) {
     const left = open - total;
@@ -370,7 +370,7 @@ export default function App() {
     );
     return (
       <div style={{ background: COLORS.cardInner, borderRadius: 12, padding: "12px 16px", marginBottom: 16, textAlign: "center", color: COLORS.muted, fontSize: 13 }}>
-        🔒 Window closed — opens 9am ET · closes 3pm ET
+        🔒 Window closed — opens 9am ET · closes 5pm ET
       </div>
     );
   }
